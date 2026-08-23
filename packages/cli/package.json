@@ -4,7 +4,7 @@
   "description": "Command-line client for publishing and retrieving Open Knowledge Format bundles",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MegaPanchamZ/okfshare.git",
+    "url": "git+https://github.com/MegaPanchamZ/okfshare-cli.git",
     "directory": "packages/cli"
   },
   "publishConfig": {
@@ -31,5 +31,9 @@
   "dependencies": {
     "@okfshare/agent-installer": "workspace:*",
     "yaml": "^2.9.0"
-  }
+  },
+  "bugs": {
+    "url": "https://github.com/MegaPanchamZ/okfshare-cli/issues"
+  },
+  "homepage": "https://okfshare.app"
 }

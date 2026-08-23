@@ -17,5 +17,13 @@
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json",
     "test": "node --test dist/tests/*.test.js"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MegaPanchamZ/okfshare-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MegaPanchamZ/okfshare-cli/issues"
+  },
+  "homepage": "https://okfshare.app"
 }
