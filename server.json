@@ -2,19 +2,19 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.MegaPanchamZ/okfshare-mcp",
   "display_name": "OKFShare",
-  "description": "Shared, versioned knowledge for AI coding agents. Search, retrieve cited context from, and publish Open Knowledge Format knowledge bundles in your team workspace.",
-  "version": "0.1.0",
+  "description": "Shared, versioned knowledge for AI coding agents: cited retrieval and publishing of OKF bundles.",
+  "version": "0.1.1",
   "website_url": "https://okfshare.app",
   "repository_url": "https://github.com/MegaPanchamZ/okfshare-cli",
   "packages": [
     {
-      "registry_type": "npm",
       "identifier": "@okfshare/mcp",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "transport": {
         "type": "stdio"
       },
-      "environment_variables": [
+      "registryType": "npm",
+      "environmentVariables": [
         {
           "name": "OKFSHARE_TOKEN",
           "description": "Pre-provisioned okfshare CLI credential for headless use. Optional; run `npx okfshare@latest setup` instead to authenticate interactively.",

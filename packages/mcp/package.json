@@ -1,6 +1,6 @@
 {
   "name": "@okfshare/mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server exposing okfshare operations to agents",
   "type": "module",
   "bin": {
@@ -25,5 +25,6 @@
   "bugs": {
     "url": "https://github.com/MegaPanchamZ/okfshare-cli/issues"
   },
-  "homepage": "https://okfshare.app"
+  "homepage": "https://okfshare.app",
+  "mcpName": "io.github.MegaPanchamZ/okfshare-mcp"
 }
