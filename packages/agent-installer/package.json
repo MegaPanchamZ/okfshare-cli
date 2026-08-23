@@ -1,0 +1,45 @@
+{
+  "name": "@okfshare/agent-installer",
+  "version": "0.1.7",
+  "description": "Install the canonical OKFShare agent skill into supported agent directories",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MegaPanchamZ/okfshare.git",
+    "directory": "packages/agent-installer"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "type": "module",
+  "bin": {
+    "okfshare-agent": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "adapters.md",
+    "skill/SKILL.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "check": "pnpm typecheck && pnpm test && pnpm build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.0.0"
+  }
+}

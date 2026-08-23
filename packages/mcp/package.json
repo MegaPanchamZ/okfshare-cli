@@ -1,0 +1,21 @@
+{
+  "name": "@okfshare/mcp",
+  "version": "0.1.0",
+  "description": "MCP server exposing okfshare operations to agents",
+  "type": "module",
+  "bin": {
+    "okfshare-mcp": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json",
+    "test": "node --test dist/tests/*.test.js"
+  }
+}

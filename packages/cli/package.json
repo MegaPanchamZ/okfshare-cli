@@ -1,0 +1,35 @@
+{
+  "name": "okfshare",
+  "version": "0.3.0",
+  "description": "Command-line client for publishing and retrieving Open Knowledge Format bundles",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MegaPanchamZ/okfshare.git",
+    "directory": "packages/cli"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "type": "module",
+  "bin": {
+    "okfshare": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "check": "pnpm typecheck && pnpm test && pnpm build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@okfshare/agent-installer": "workspace:*",
+    "yaml": "^2.9.0"
+  }
+}
