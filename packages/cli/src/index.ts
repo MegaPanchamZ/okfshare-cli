@@ -125,6 +125,52 @@ const commandSpecs: Record<string, CommandSpec> = {
     flags: { "expected-revision": { type: "string" } },
     mutates: true,
   },
+  integrity: {
+    description: "Verify one revision or a revision history",
+    args: [{ name: "SHARE_ID", required: true }, { name: "REVISION" }],
+    flags: {
+      limit: { type: "number" },
+      cursor: { type: "string" },
+      full: { type: "boolean" },
+    },
+    mutates: false,
+  },
+  capabilities: {
+    description: "Inspect effective workspace or share capabilities",
+    args: [
+      { name: "workspace|share", required: true },
+      { name: "ID", required: true },
+    ],
+    flags: {},
+    mutates: false,
+  },
+  proposals: {
+    description: "List and manage share proposals",
+    args: [
+      { name: "ACTION", required: true },
+      { name: "ID", required: true },
+    ],
+    flags: { data: { type: "string" } },
+    mutates: true,
+  },
+  "workspace-search": {
+    description: "Search shares and knowledge in the current workspace",
+    args: [{ name: "QUERY", required: true }],
+    flags: { limit: { type: "number" }, cursor: { type: "string" } },
+    mutates: false,
+  },
+  stars: {
+    description: "List or change starred public shares",
+    args: [{ name: "list|add|remove", required: true }, { name: "SHARE_ID" }],
+    flags: {},
+    mutates: true,
+  },
+  redact: {
+    description: "Redact a share with an explicit reason",
+    args: [{ name: "SHARE_ID", required: true }],
+    flags: { reason: { type: "string", hint: "required redaction reason" } },
+    mutates: true,
+  },
 };
 
 export const EXIT_CODES = {
@@ -174,6 +220,8 @@ export function classifyCliError(error: unknown): {
     )
   )
     return { code: "VALIDATION_FAILED", exitCode: EXIT_CODES.validation };
+  if (/BACKEND_ROUTE_MISSING/.test(message))
+    return { code: "BACKEND_ROUTE_MISSING", exitCode: EXIT_CODES.error };
   return { code: "CLI_ERROR", exitCode: EXIT_CODES.error };
 }
 
@@ -371,6 +419,7 @@ export function parseFlags(args: string[]): {
         "no-color",
         "agent",
         "password-stdin",
+        "full",
       ]);
       if (
         booleanFlags.has(key) &&
@@ -403,6 +452,55 @@ export function parseFlags(args: string[]): {
         "field",
         "fields",
         "command",
+        "data",
+        "entity",
+        "entity-types",
+        "edge-types",
+        "depth",
+        "max-hops",
+        "from",
+        "to",
+        "q",
+        "spec",
+        "label",
+        "ref-type",
+        "target-revision-id",
+        "expected-revision-id",
+        "attestation-id",
+        "public-key",
+        "signature",
+        "attester-id",
+        "reviewer-type",
+        "reviewer-id",
+        "member-type",
+        "member-id",
+        "decision",
+        "parent-id",
+        "name",
+        "format",
+        "target",
+        "share-id",
+        "intent",
+        "window-hours",
+        "target-slo",
+        "confirmation",
+        "cursor",
+        "retention-days",
+        "action",
+        "scope",
+        "user-id",
+        "billing-owner-id",
+        "security-administrator-id",
+        "actor-type",
+        "actor-id",
+        "category",
+        "outcome",
+        "resource-id",
+        "intent",
+        "path",
+        "role",
+        "reason",
+        "user",
       ]);
       const repeatedFlags = new Set(["topic", "field", "fields"]);
       const raw =
@@ -461,6 +559,34 @@ const commands = new Set([
   "schema",
   "completions",
   "skills",
+  "graph",
+  "blame",
+  "attest",
+  "refs",
+  "roles",
+  "bindings",
+  "orgs",
+  "teams",
+  "service-accounts",
+  "audit",
+  "siem",
+  "governance",
+  "export",
+  "retention",
+  "billing",
+  "ops",
+  "integrity",
+  "capabilities",
+  "workspace-search",
+  "source",
+  "stars",
+  "redact",
+  "share-access",
+  "annotations",
+  "webhooks",
+  "rulesets",
+  "domains",
+  "admin",
   "version",
 ]);
 const commonFlags = new Set([
@@ -520,7 +646,17 @@ const commandFlags: Record<string, Set<string>> = {
   init: new Set(["title", "description"]),
   rollback: new Set(["expected-revision"]),
   fork: new Set([]),
-  proposals: new Set(["from-share", "title", "description", "revision"]),
+  proposals: new Set([
+    "from-share",
+    "title",
+    "description",
+    "revision",
+    "data",
+    "reviewer-type",
+    "reviewer-id",
+    "decision",
+    "parent-id",
+  ]),
   explore: new Set(["topic", "limit"]),
   list: new Set(["topic"]),
   pull: new Set(["revision"]),
@@ -529,6 +665,98 @@ const commandFlags: Record<string, Set<string>> = {
   bind: new Set(["revision"]),
   skills: new Set(["scope", "project"]),
   schema: new Set(["command"]),
+  graph: new Set([
+    "revision",
+    "limit",
+    "entity",
+    "entity-types",
+    "edge-types",
+    "depth",
+    "max-hops",
+    "from",
+    "to",
+    "q",
+  ]),
+  blame: new Set(["revision", "q"]),
+  attest: new Set([
+    "data",
+    "public-key",
+    "signature",
+    "attester-id",
+    "attestation-id",
+  ]),
+  refs: new Set([
+    "data",
+    "label",
+    "ref-type",
+    "target-revision-id",
+    "expected-revision-id",
+    "spec",
+  ]),
+  roles: new Set(["data"]),
+  bindings: new Set(["data"]),
+  orgs: new Set([
+    "data",
+    "name",
+    "user-id",
+    "billing-owner-id",
+    "security-administrator-id",
+  ]),
+  teams: new Set([
+    "data",
+    "name",
+    "description",
+    "member-type",
+    "member-id",
+    "role",
+  ]),
+  "service-accounts": new Set([
+    "data",
+    "name",
+    "description",
+    "scopes",
+    "expires-at",
+  ]),
+  audit: new Set([
+    "action",
+    "actor-type",
+    "actor-id",
+    "category",
+    "outcome",
+    "resource-id",
+    "from",
+    "to",
+    "limit",
+    "cursor",
+    "format",
+  ]),
+  siem: new Set(["data"]),
+  governance: new Set([
+    "data",
+    "name",
+    "scope",
+    "share-id",
+    "reason",
+    "retention-days",
+    "action",
+    "policy-type",
+  ]),
+  export: new Set(["target", "share-id", "format", "intent"]),
+  retention: new Set([]),
+  billing: new Set([]),
+  ops: new Set(["timeout", "window-hours", "target-slo", "target"]),
+  integrity: new Set(["limit", "cursor", "full"]),
+  capabilities: new Set([]),
+  "workspace-search": new Set(["limit", "cursor"]),
+  source: new Set(["revision", "line-start", "line-end"]),
+  stars: new Set([]),
+  redact: new Set(["reason"]),
+  "share-access": new Set(["data", "user-id", "target", "role"]),
+  annotations: new Set(["data", "revision", "path"]),
+  webhooks: new Set(["data"]),
+  rulesets: new Set(["data"]),
+  domains: new Set(["data"]),
+  admin: new Set(["data"]),
 };
 export function validateCommandFlags(command: string, flags: Flags): void {
   if (!commands.has(command)) throw new Error(`Unknown command: ${command}`);
@@ -549,6 +777,23 @@ export function validateCommandFlags(command: string, flags: Flags): void {
     parseNonnegativeInteger(flags.retries, "retries") > 5
   )
     throw new Error("retries must be between 0 and 5");
+  const bounds: Record<string, [number, number]> = {
+    limit: [1, 200],
+    depth: [1, 3],
+    "max-hops": [1, 10],
+    "retention-days": [0, 36500],
+    "window-hours": [1, 8760],
+  };
+  for (const [key, [minimum, maximum]] of Object.entries(bounds))
+    if (flags[key] !== undefined) {
+      if (minimum === 0) {
+        const n = parseNonnegativeInteger(flags[key], key);
+        if (n > maximum)
+          throw new Error(`${key} must be between ${minimum} and ${maximum}`);
+      } else {
+        parseBoundedInteger(flags[key], key, minimum, maximum);
+      }
+    }
 }
 export const commandHelp: Record<string, string> = {
   setup:
@@ -571,8 +816,9 @@ export const commandHelp: Record<string, string> = {
   whoami:
     "npx okfshare@latest whoami [--api-url URL] [--timeout MS] [--retries N] [--json]",
   list: "npx okfshare@latest list [--api-url URL] [--timeout MS] [--retries N] [--json]",
-  proposals: "npx okfshare@latest proposals list|propose|merge|reject ...",
-  fork: "npx okfshare@latest fork SHARE_ID [--yes|--dry-run] [--json]",
+  proposals:
+    "npx okfshare@latest proposals list|propose|detail|reviewer|review|comment|check|merge|reopen|reject ...",
+  fork: "npx okfshare@latest fork create|status|sync SHARE_ID [--yes|--dry-run] [--json]",
   open: "npx okfshare@latest open SHARE_ID [--api-url URL] [--timeout MS] [--retries N] [--json]",
   rollback:
     "npx okfshare@latest rollback SHARE_ID REVISION [--expected-revision REVISION] [--yes|--dry-run] [--json]",
@@ -588,6 +834,48 @@ export const commandHelp: Record<string, string> = {
   skills:
     "npx okfshare@latest skills install|status|uninstall [okfshare] [--scope user|project] [--project DIR] [--yes] [--json]",
   version: "npx okfshare@latest version [--json]",
+  graph:
+    "npx okfshare@latest graph snapshot|neighbors|path|diff|provenance|related|search ID [flags]",
+  blame:
+    "npx okfshare@latest blame line|semantic SHARE_ID [--revision N] [--q QUERY]",
+  attest:
+    "npx okfshare@latest attest submit|list|verify SHARE_ID REVISION [--data JSON]",
+  refs: "npx okfshare@latest refs list|get|create|move|delete|resolve SHARE_ID ...",
+  roles:
+    "npx okfshare@latest roles list|get|create|update|delete WORKSPACE_ID ...",
+  bindings: "npx okfshare@latest bindings list|create|delete WORKSPACE_ID ...",
+  orgs: "npx okfshare@latest orgs list|get|create|update|delete|transfer ...; orgs administrators get|set WORKSPACE_ID",
+  teams:
+    "npx okfshare@latest teams list|get|create|update|delete WORKSPACE_ID ...",
+  "service-accounts":
+    "npx okfshare@latest service-accounts list|get|create|enable|disable|credentials|issue|rotate|revoke WORKSPACE_ID ...",
+  audit: "npx okfshare@latest audit list|verify|export [--format csv|ndjson]",
+  siem: "npx okfshare@latest siem list|get|create|update|delete WORKSPACE_ID ...",
+  governance: "npx okfshare@latest governance retention|legal-hold|policy ...",
+  export:
+    "npx okfshare@latest export workspace|share|account [--format ndjson|tar]",
+  retention: "npx okfshare@latest retention dry-run|apply [--yes]",
+  billing: "npx okfshare@latest billing aggregate",
+  ops: "npx okfshare@latest ops status|dependencies|slo",
+  integrity:
+    "npx okfshare@latest integrity SHARE_ID [REVISION] [--limit N] [--cursor N] [--full]",
+  capabilities: "npx okfshare@latest capabilities workspace|share ID [--json]",
+  "workspace-search":
+    "npx okfshare@latest workspace-search QUERY [--limit N] [--cursor CURSOR] [--json]",
+  source:
+    "npx okfshare@latest source SHARE_ID REVISION PATH [--line-start N] [--line-end N] [--json]",
+  stars:
+    "npx okfshare@latest stars list|add|remove [SHARE_ID] [--yes|--dry-run] [--json]",
+  redact:
+    "npx okfshare@latest redact SHARE_ID --reason REASON [--yes|--dry-run] [--json]",
+  "share-access":
+    "npx okfshare@latest share-access roles|grants|private SHARE_ID ...",
+  annotations: "npx okfshare@latest annotations list|create|resolve ...",
+  webhooks: "npx okfshare@latest webhooks list|get|create|update|delete ...",
+  rulesets:
+    "npx okfshare@latest rulesets list|get|create|update|delete|evaluate|validate WORKSPACE_ID ...",
+  domains: "npx okfshare@latest domains list|get|create|verify|delete ...",
+  admin: "npx okfshare@latest admin access|overview|settings|policies ...",
 };
 async function authClient(flags?: Flags): Promise<ApiClient> {
   const token = await tokenFrom(store);
@@ -897,6 +1185,784 @@ const bundleSummary = (
   bytes: bundle.totalBytes,
   digest: bundleDigest(bundle),
 });
+const requiredArg = (value: string | undefined, message: string) => {
+  if (!value) throw new Error(message);
+  return value;
+};
+const jsonPayload = (flags: Flags): unknown => {
+  if (typeof flags.data !== "string") return {};
+  try {
+    return JSON.parse(flags.data);
+  } catch {
+    throw new Error("--data must be valid JSON");
+  }
+};
+const assertNoPrivateKey = (value: unknown): void => {
+  if (!value || typeof value !== "object") return;
+  for (const [key, nested] of Object.entries(
+    value as Record<string, unknown>,
+  )) {
+    if (/private.?key|secret|password|token|credential/i.test(key))
+      throw new Error(
+        "Private keys and secrets are not accepted by this command",
+      );
+    assertNoPrivateKey(nested);
+  }
+};
+const redactPlatformSecrets = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(redactPlatformSecrets);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(
+        ([key]) =>
+          !/^(secret|token|credential|password|private.?key)$/i.test(key),
+      )
+      .map(([key, nested]) => [key, redactPlatformSecrets(nested)]),
+  );
+};
+const csvFlag = (flags: Flags, key: string) =>
+  typeof flags[key] === "string"
+    ? String(flags[key])
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean)
+    : undefined;
+const platformQuery = (flags: Flags, names: string[]) => {
+  const result: Record<string, string | number | undefined> = {};
+  for (const name of names) {
+    const value = flags[name];
+    if (value !== undefined)
+      result[
+        name.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())
+      ] = String(value);
+  }
+  return result;
+};
+const platformMutation = async (flags: Flags, action: string) => {
+  await confirmChange(flags, action);
+};
+async function platformCommand(command: string, args: string[], flags: Flags) {
+  const api = await authClient(flags);
+  const sub = args[0];
+  const id = args[1];
+  let value: unknown;
+  if (command === "capabilities") {
+    const area = requiredArg(sub, "capabilities needs workspace or share");
+    const resource = requiredArg(id, "capabilities needs ID");
+    if (area === "workspace") value = await api.workspaceCapabilities(resource);
+    else if (area === "share") value = await api.shareCapabilities(resource);
+    else throw new Error("Usage: capabilities workspace|share ID");
+  } else if (command === "workspace-search") {
+    value = await api.workspaceSearch(
+      requiredArg(sub, "workspace-search needs QUERY"),
+      {
+        limit: flags.limit as string,
+        cursor: flags.cursor as string,
+      },
+    );
+  } else if (command === "source") {
+    const share = requiredArg(sub, "source needs SHARE_ID");
+    const revision = requiredArg(id, "source needs REVISION");
+    const path = requiredArg(args[2], "source needs PATH");
+    if (path.split("/").some((segment) => segment === ".."))
+      throw new Error("source PATH must not contain parent traversal");
+    value = await api.source(share, revision, path, {
+      lineStart: flags["line-start"] as string,
+      lineEnd: flags["line-end"] as string,
+    });
+  } else if (command === "stars") {
+    const action = sub ?? "list";
+    const share =
+      action === "list"
+        ? undefined
+        : requiredArg(id, `stars ${action} needs SHARE_ID`);
+    if (action === "add" || action === "remove") {
+      await platformMutation(flags, `${action} share star`);
+      value = flags.dryRun
+        ? { dryRun: true, shareId: share, starred: action === "add" }
+        : await api.stars(share, action === "add" ? "POST" : "DELETE");
+    } else if (action === "list") value = await api.stars();
+    else throw new Error("Usage: stars list|add|remove [SHARE_ID]");
+  } else if (command === "redact") {
+    const share = requiredArg(sub, "redact needs SHARE_ID");
+    const reason = requiredArg(
+      flags.reason as string,
+      "redact needs --reason REASON",
+    );
+    await platformMutation(flags, "redact share");
+    value = flags.dryRun
+      ? { dryRun: true, shareId: share, reason }
+      : await api.redact(share, reason, randomUUID());
+  } else if (command === "fork") {
+    const operation = sub === "create" || sub === "fork" ? args[1] : id;
+    const action =
+      sub === "create" || sub === "sync" || sub === "status" ? sub : "create";
+    const share = requiredArg(operation, `fork ${action} needs SHARE_ID`);
+    if (action === "status") value = await api.forkStatus(share);
+    else {
+      await platformMutation(flags, `fork ${action}`);
+      value = flags.dryRun
+        ? { dryRun: true, shareId: share }
+        : action === "sync"
+          ? await api.forkSync(share)
+          : await api.forkCreate(share);
+    }
+  } else if (command === "integrity") {
+    const share = requiredArg(sub, "integrity needs SHARE_ID");
+    value = await api.revisionIntegrity(share, id, {
+      limit: flags.limit as string,
+      cursor: flags.cursor as string,
+      full: flags.full === true ? 1 : undefined,
+    });
+  } else if (command === "share-access") {
+    const area = requiredArg(
+      sub,
+      "share-access needs roles, grants, or private",
+    );
+    const share = requiredArg(id, "share-access needs SHARE_ID");
+    if (area === "roles") {
+      const action = args[2] ?? "list";
+      if (action === "list") value = await api.shareRoles(share);
+      else if (action === "delete") {
+        await platformMutation(flags, "remove share role");
+        value = flags.dryRun
+          ? { dryRun: true }
+          : await api.shareRoleMutation(share, "DELETE", undefined, {
+              user: flags["user-id"] as string,
+            });
+      } else
+        value = await api.shareRoleMutation(
+          share,
+          "POST",
+          {
+            role:
+              flags.role ??
+              (jsonPayload(flags) as Record<string, unknown>).role,
+          },
+          { user: flags["user-id"] as string },
+        );
+    } else if (area === "grants") {
+      const action = args[2] ?? "list";
+      if (action === "list") value = await api.shareGrants(share);
+      else if (action === "create")
+        value = await api.shareGrantCreate(share, jsonPayload(flags));
+      else if (action === "delete") {
+        await platformMutation(flags, "remove share grant");
+        value = flags.dryRun
+          ? { dryRun: true }
+          : await api.shareGrantDelete(
+              share,
+              requiredArg(args[3], "grant delete needs GRANT_ID"),
+            );
+      } else
+        throw new Error(
+          "Usage: share-access grants list|create|delete SHARE_ID",
+        );
+    } else if (area === "private") {
+      await platformMutation(flags, "make share private");
+      value = flags.dryRun
+        ? { dryRun: true }
+        : await api.updateMetadata(share, { visibility: "private" });
+    } else throw new Error("Usage: share-access roles|grants|private SHARE_ID");
+  } else if (command === "annotations") {
+    const action = requiredArg(
+      sub,
+      "annotations needs list, create, or resolve",
+    );
+    if (action === "list")
+      value = await api.annotations(
+        requiredArg(id, "annotations list needs SHARE_ID"),
+        platformQuery(flags, ["revision", "path"]),
+      );
+    else if (action === "create")
+      value = await api.annotationCreate(
+        requiredArg(id, "annotations create needs SHARE_ID"),
+        jsonPayload(flags),
+      );
+    else if (action === "resolve")
+      value = await api.annotationResolve(
+        requiredArg(id, "annotations resolve needs ANNOTATION_ID"),
+      );
+    else
+      throw new Error(
+        "Usage: annotations list|create SHARE_ID or resolve ANNOTATION_ID",
+      );
+  } else if (command === "webhooks") {
+    const action = sub ?? "list";
+    const webhookId = action === "list" || action === "create" ? undefined : id;
+    if (action === "delete") await platformMutation(flags, "delete webhook");
+    value = await api.webhooks(
+      webhookId,
+      action === "list" || action === "get"
+        ? "GET"
+        : action === "create"
+          ? "POST"
+          : action === "update"
+            ? "PATCH"
+            : "DELETE",
+      action === "create" || action === "update"
+        ? jsonPayload(flags)
+        : undefined,
+    );
+  } else if (command === "rulesets") {
+    const workspace = requiredArg(id, "rulesets needs WORKSPACE_ID");
+    const action = sub ?? "list";
+    const rid = ["get", "update", "delete", "evaluate"].includes(action)
+      ? args[2]
+      : undefined;
+    if (action === "delete") await platformMutation(flags, "delete ruleset");
+    value = ["evaluate", "validate"].includes(action)
+      ? await api.rulesetAction(
+          workspace,
+          action as "evaluate" | "validate",
+          rid,
+          jsonPayload(flags),
+        )
+      : await api.rulesets(
+          workspace,
+          rid,
+          action === "list" || action === "get"
+            ? "GET"
+            : action === "create"
+              ? "POST"
+              : action === "update"
+                ? "PUT"
+                : "DELETE",
+          ["create", "update"].includes(action)
+            ? jsonPayload(flags)
+            : undefined,
+        );
+  } else if (command === "domains") {
+    const action = sub ?? "list";
+    const domainId = action === "list" || action === "create" ? undefined : id;
+    if (action === "delete") await platformMutation(flags, "delete domain");
+    value = await api.governance(
+      `domains${domainId ? `/${encodeURIComponent(domainId)}` : ""}${action === "verify" ? "/verify" : ""}`,
+      action === "list" || action === "get"
+        ? "GET"
+        : action === "create"
+          ? "POST"
+          : action === "verify"
+            ? "POST"
+            : "DELETE",
+      ["create", "verify"].includes(action) ? jsonPayload(flags) : undefined,
+    );
+  } else if (command === "admin") {
+    const area = requiredArg(
+      sub,
+      "admin needs access, overview, settings, or policies",
+    );
+    const workspace = ["settings", "policies"].includes(area)
+      ? requiredArg(id, "admin settings/policies needs WORKSPACE_ID")
+      : undefined;
+    const suffix = ["settings", "policies"].includes(area)
+      ? `workspaces/${encodeURIComponent(workspace!)}/${area}${args[2] ? `/${encodeURIComponent(args[2])}` : ""}`
+      : area;
+    const method =
+      ["settings", "policies"].includes(area) && args[2] ? "PUT" : "GET";
+    value = await api.admin(
+      suffix,
+      method,
+      method === "PUT" ? jsonPayload(flags) : undefined,
+    );
+  } else if (command === "graph") {
+    if (sub === "search")
+      value = await api.workspaceGraphSearch(
+        requiredArg(id, "graph search needs WORKSPACE_ID"),
+        {
+          q: requiredArg(args[2], "graph search needs QUERY"),
+          limit: flags.limit as string,
+          cursor: flags.cursor as string,
+        },
+      );
+    else {
+      const share = requiredArg(id, "graph needs SHARE_ID");
+      const query = {
+        ...platformQuery(flags, [
+          "revision",
+          "limit",
+          "cursor",
+          "entity",
+          "depth",
+          "max-hops",
+          "from",
+          "to",
+        ]),
+        edgeTypes: csvFlag(flags, "edge-types"),
+        entityTypes: csvFlag(flags, "entity-types"),
+      };
+      value =
+        sub === "snapshot"
+          ? await api.graphSnapshot(share, query)
+          : sub === "neighbors"
+            ? await api.graphNeighbors(share, query)
+            : sub === "path"
+              ? await api.graphPath(share, query)
+              : sub === "diff"
+                ? await api.graphDiff(share, query)
+                : sub === "provenance"
+                  ? await api.graphProvenance(share, query)
+                  : sub === "related"
+                    ? await api.graphRelated(share, query)
+                    : (() => {
+                        throw new Error(
+                          "Usage: graph snapshot|neighbors|path|diff|provenance|related|search",
+                        );
+                      })();
+    }
+  } else if (command === "blame") {
+    const share = requiredArg(id, "blame needs SHARE_ID");
+    value =
+      sub === "semantic"
+        ? await api.semanticBlame(share, {
+            revision: flags.revision as string,
+            q: (flags.q as string) ?? args[2],
+          })
+        : sub === "line"
+          ? await api.blame(share, { revision: flags.revision as string })
+          : (() => {
+              throw new Error("Usage: blame line|semantic SHARE_ID");
+            })();
+  } else if (command === "attest") {
+    const share = requiredArg(id, "attest needs SHARE_ID");
+    const revision = requiredArg(args[2], "attest needs REVISION");
+    if (sub === "submit") {
+      const payload = jsonPayload(flags) as Record<string, unknown>;
+      assertNoPrivateKey(payload);
+      if (flags["public-key"] !== undefined)
+        payload.claim = {
+          ...((payload.claim as object) ?? {}),
+          key: flags["public-key"],
+        };
+      if (flags.signature !== undefined) payload.signature = flags.signature;
+      if (flags["attester-id"] !== undefined)
+        payload.attesterId = flags["attester-id"];
+      if (!payload.claim || typeof payload.signature !== "string")
+        throw new Error("attest submit needs claim/public key and --signature");
+      value = await api.attestSubmit(share, revision, payload);
+    } else if (sub === "list") value = await api.attestList(share, revision);
+    else if (sub === "verify")
+      value = await api.attestVerify(
+        share,
+        revision,
+        flags["attestation-id"] as string | undefined,
+      );
+    else throw new Error("Usage: attest submit|list|verify SHARE_ID REVISION");
+  } else if (command === "refs") {
+    const share = requiredArg(id, "refs needs SHARE_ID");
+    const refKinds: Record<string, string> = {
+      branches: "branch",
+      channels: "channel",
+      tags: "tag",
+      releases: "release",
+    };
+    if (refKinds[sub ?? ""]) {
+      const operation = args[2] ?? "list";
+      if (operation === "list") value = await api.refs(share);
+      else if (operation === "resolve")
+        value = await api.resolveRef(share, String(args[3] ?? "current"));
+      else if (operation === "get")
+        value = await api.ref(
+          share,
+          requiredArg(args[3], "refs get needs LABEL"),
+        );
+      else if (operation === "create")
+        value = await api.createRef(share, {
+          ...(jsonPayload(flags) as object),
+          refType: refKinds[sub ?? ""],
+          label: flags.label,
+          targetRevisionId: flags["target-revision-id"],
+        });
+      else
+        throw new Error(
+          "Usage: refs channels|tags|releases|branches SHARE_ID list|resolve|get|create",
+        );
+    } else if (sub === "list") value = await api.refs(share);
+    else if (sub === "get")
+      value = await api.ref(
+        share,
+        requiredArg(args[2], "refs get needs LABEL"),
+      );
+    else if (sub === "resolve")
+      value = await api.resolveRef(
+        share,
+        String(flags.spec ?? args[2] ?? "current"),
+      );
+    else if (sub === "create")
+      value = await api.createRef(share, {
+        ...(jsonPayload(flags) as object),
+        refType: flags["ref-type"],
+        label: flags.label,
+        targetRevisionId: flags["target-revision-id"],
+      });
+    else if (sub === "move")
+      value = await api.moveRef(
+        share,
+        requiredArg(args[2], "refs move needs LABEL"),
+        {
+          targetRevisionId: flags["target-revision-id"],
+          expectedRevisionId: flags["expected-revision-id"] ?? null,
+        },
+      );
+    else if (sub === "delete") {
+      await platformMutation(flags, "delete ref");
+      value = flags.dryRun
+        ? { dryRun: true }
+        : await api.deleteRef(
+            share,
+            requiredArg(args[2], "refs delete needs LABEL"),
+            flags["expected-revision-id"] as string,
+          );
+    } else
+      throw new Error(
+        "Usage: refs list|get|create|move|delete|resolve SHARE_ID",
+      );
+  } else if (command === "proposals") {
+    const proposal = requiredArg(id, `proposals ${sub} needs PROPOSAL_ID`);
+    if (sub === "detail") value = await api.proposalDetail(proposal);
+    else if (["merge", "reject", "reopen"].includes(sub ?? "")) {
+      await platformMutation(flags, `proposals ${sub}`);
+      value = flags.dryRun
+        ? { dryRun: true, proposalId: proposal }
+        : await api.proposalAction(
+            proposal,
+            sub as "merge" | "reject" | "reopen",
+          );
+    } else if (sub === "reviewer")
+      value = await api.proposalReviewer(proposal, jsonPayload(flags));
+    else if (sub === "review")
+      value = await api.proposalReview(proposal, jsonPayload(flags));
+    else if (sub === "comment")
+      value = await api.proposalComment(proposal, {
+        ...(jsonPayload(flags) as object),
+        parentId: flags["parent-id"],
+      });
+    else if (sub === "check")
+      value = await api.proposalCheck(proposal, jsonPayload(flags));
+    else
+      throw new Error(
+        "Usage: proposals detail|reviewer|review|comment|check|reopen PROPOSAL_ID",
+      );
+  } else if (command === "roles" || command === "bindings") {
+    const workspace = requiredArg(id, `${command} needs WORKSPACE_ID`);
+    const target = args[2];
+    if (command === "bindings")
+      value =
+        sub === "list"
+          ? await api.bindings(workspace)
+          : sub === "create"
+            ? await api.bindingMutation(
+                workspace,
+                undefined,
+                "POST",
+                jsonPayload(flags),
+              )
+            : (await platformMutation(flags, "delete binding"),
+              flags.dryRun
+                ? { dryRun: true }
+                : await api.bindingMutation(
+                    workspace,
+                    requiredArg(target, "bindings delete needs BINDING_ID"),
+                    "DELETE",
+                  ));
+    else
+      value =
+        sub === "list"
+          ? await api.roles(workspace)
+          : sub === "get"
+            ? await api.role(
+                workspace,
+                requiredArg(target, "roles get needs ROLE_ID"),
+              )
+            : sub === "create"
+              ? await api.roleMutation(
+                  workspace,
+                  undefined,
+                  "POST",
+                  jsonPayload(flags),
+                )
+              : sub === "update"
+                ? await api.roleMutation(
+                    workspace,
+                    requiredArg(target, "roles update needs ROLE_ID"),
+                    "PATCH",
+                    jsonPayload(flags),
+                  )
+                : (await platformMutation(flags, "delete role"),
+                  flags.dryRun
+                    ? { dryRun: true }
+                    : await api.roleMutation(
+                        workspace,
+                        requiredArg(target, "roles delete needs ROLE_ID"),
+                        "DELETE",
+                      ));
+  } else if (command === "orgs" || command === "teams") {
+    const workspace = id;
+    if (
+      command === "orgs" &&
+      (sub === "administrators" || sub === "administrator")
+    ) {
+      const action = args[1] ?? "get";
+      const administratorWorkspace = requiredArg(
+        args[2],
+        "orgs administrators needs WORKSPACE_ID",
+      );
+      if (action === "get" || action === "list")
+        value = await api.organizationAdministrators(administratorWorkspace);
+      else if (action === "set" || action === "update") {
+        await platformMutation(flags, "assign organization administrators");
+        value = flags.dryRun
+          ? { dryRun: true, workspaceId: administratorWorkspace }
+          : await api.setOrganizationAdministrators(administratorWorkspace, {
+              ...(jsonPayload(flags) as object),
+              ...(flags["billing-owner-id"] !== undefined
+                ? { billingOwnerId: flags["billing-owner-id"] }
+                : {}),
+              ...(flags["security-administrator-id"] !== undefined
+                ? {
+                    securityAdministratorId: flags["security-administrator-id"],
+                  }
+                : {}),
+            });
+      } else
+        throw new Error(
+          "Usage: orgs administrators get|set WORKSPACE_ID --data JSON",
+        );
+    } else if (command === "orgs")
+      value =
+        sub === "list"
+          ? await api.organizations()
+          : sub === "create"
+            ? await api.organizationMutation(
+                undefined,
+                "POST",
+                jsonPayload(flags),
+              )
+            : sub === "get"
+              ? await api.organization(
+                  requiredArg(workspace, "orgs get needs WORKSPACE_ID"),
+                )
+              : sub === "transfer"
+                ? await api.transferOwnership(
+                    requiredArg(workspace, "orgs transfer needs WORKSPACE_ID"),
+                    requiredArg(
+                      args[2] ?? (flags["user-id"] as string),
+                      "orgs transfer needs USER_ID",
+                    ),
+                  )
+                : await api.organizationMutation(
+                    requiredArg(workspace, "orgs needs WORKSPACE_ID"),
+                    sub === "update" ? "PATCH" : "DELETE",
+                    jsonPayload(flags),
+                  );
+    else if (
+      ["members", "member-add", "member-list", "member-delete"].includes(
+        sub ?? "",
+      )
+    ) {
+      const team = requiredArg(args[2], "teams member operation needs TEAM_ID");
+      const operation =
+        sub === "members" ? (args[3] ?? "list") : sub.replace("member-", "");
+      if (operation === "delete")
+        await platformMutation(flags, "remove team member");
+      value = await api.teamMembers(
+        requiredArg(workspace, "teams needs WORKSPACE_ID"),
+        team,
+        operation === "delete" ? args[4] : undefined,
+        operation === "list" ? "GET" : operation === "add" ? "POST" : "DELETE",
+        operation === "add" ? jsonPayload(flags) : undefined,
+      );
+    } else
+      value =
+        sub === "list"
+          ? await api.teams(requiredArg(workspace, "teams needs WORKSPACE_ID"))
+          : await api.teamMutation(
+              requiredArg(workspace, "teams needs WORKSPACE_ID"),
+              sub === "create" ? undefined : args[2],
+              sub === "create"
+                ? "POST"
+                : sub === "update"
+                  ? "PATCH"
+                  : sub === "delete"
+                    ? "DELETE"
+                    : "GET",
+              jsonPayload(flags),
+            );
+  } else if (command === "service-accounts") {
+    const workspace = requiredArg(id, "service-accounts needs WORKSPACE_ID");
+    const account = args[2];
+    if (sub === "list") value = await api.serviceAccounts(workspace);
+    else if (sub === "get")
+      value = await api.serviceAccountMutation(
+        workspace,
+        requiredArg(account, "get needs ACCOUNT_ID"),
+        "GET",
+      );
+    else if (sub === "create")
+      value = await api.serviceAccountMutation(
+        workspace,
+        undefined,
+        "POST",
+        jsonPayload(flags),
+      );
+    else if (sub === "credentials")
+      value = await api.credentials(
+        workspace,
+        requiredArg(account, "credentials needs ACCOUNT_ID"),
+      );
+    else if (["issue", "rotate"].includes(sub ?? "")) {
+      const credential =
+        sub === "rotate"
+          ? requiredArg(args[3], "rotate needs CREDENTIAL_ID")
+          : undefined;
+      value = await api.credentialMutation(
+        workspace,
+        requiredArg(account, "credential needs ACCOUNT_ID"),
+        credential,
+        "POST",
+        jsonPayload(flags),
+      );
+    } else if (["enable", "disable"].includes(sub ?? "")) {
+      await platformMutation(flags, `service account ${sub}`);
+      value = flags.dryRun
+        ? { dryRun: true, workspaceId: workspace, accountId: account }
+        : sub === "enable"
+          ? await api.serviceAccountEnable(
+              workspace,
+              requiredArg(account, "enable needs ACCOUNT_ID"),
+            )
+          : await api.serviceAccountDisable(
+              workspace,
+              requiredArg(account, "disable needs ACCOUNT_ID"),
+            );
+    } else if (sub === "revoke") {
+      await platformMutation(flags, "revoke credential");
+      value = flags.dryRun
+        ? { dryRun: true }
+        : await api.credentialMutation(
+            workspace,
+            requiredArg(account, "revoke needs ACCOUNT_ID"),
+            requiredArg(args[3], "revoke needs CREDENTIAL_ID"),
+            "DELETE",
+          );
+    } else throw new Error("Unknown service-account operation");
+  } else if (command === "audit")
+    value =
+      sub === "export"
+        ? await api.auditExport(
+            (flags.format as "csv" | "ndjson") ?? "ndjson",
+            platformQuery(flags, [
+              "action",
+              "actor-type",
+              "actor-id",
+              "category",
+              "outcome",
+              "resource-id",
+              "from",
+              "to",
+              "limit",
+              "cursor",
+            ]),
+          )
+        : sub === "verify"
+          ? await api.auditVerify()
+          : await api.audit(
+              platformQuery(flags, [
+                "action",
+                "actor-type",
+                "actor-id",
+                "category",
+                "outcome",
+                "resource-id",
+                "from",
+                "to",
+                "limit",
+              ]),
+            );
+  else if (command === "siem") {
+    const workspace = requiredArg(id, "siem needs WORKSPACE_ID");
+    value =
+      sub === "list"
+        ? await api.siem(workspace)
+        : await api.siemMutation(
+            workspace,
+            sub === "create" ? undefined : args[2],
+            sub === "create"
+              ? "POST"
+              : sub === "update"
+                ? "PATCH"
+                : sub === "delete"
+                  ? "DELETE"
+                  : "GET",
+            jsonPayload(flags),
+          );
+    if (sub === "create" && value && typeof value === "object") {
+      const { secret: _secret, ...safe } = value as Record<string, unknown>;
+      value = safe;
+    }
+  } else if (command === "governance") {
+    const area = requiredArg(
+      sub,
+      "governance needs retention, legal-hold, or policy",
+    );
+    const action = args[1] ?? "list";
+    const resource =
+      area === "policy"
+        ? `policy/${requiredArg((flags["policy-type"] as string) ?? args[2], "policy needs POLICY_TYPE")}`
+        : area;
+    const item = area === "policy" ? args[3] : args[2];
+    const path =
+      action === "list"
+        ? resource
+        : `${resource}${item ? `/${item}` : ""}${action === "release" ? "/release" : ""}`;
+    value = await api.governance(
+      path,
+      action === "list" || action === "get"
+        ? "GET"
+        : action === "create"
+          ? "POST"
+          : action === "update"
+            ? "PATCH"
+            : action === "put"
+              ? "PUT"
+              : action === "delete"
+                ? "DELETE"
+                : "POST",
+      ["create", "update", "put", "release"].includes(action)
+        ? jsonPayload(flags)
+        : undefined,
+    );
+  } else if (command === "export")
+    value = await api.portability(
+      (sub ?? "workspace") as "workspace" | "share" | "account",
+      (flags["share-id"] as string) ?? id,
+      {
+        format: (flags.format as string) ?? "ndjson",
+        intent: flags.intent as string,
+      },
+    );
+  else if (command === "retention") {
+    await platformMutation(flags, "apply retention");
+    value =
+      flags.dryRun || sub === "dry-run"
+        ? await api.retention(false)
+        : await api.retention(true, {
+            apply: true,
+            confirmation: "APPLY_RETENTION",
+          });
+  } else if (command === "billing") value = await api.billing();
+  else if (command === "ops") {
+    const opsQuery = platformQuery(flags, ["timeout", "window-hours"]);
+    const target = flags.target ?? flags["target-slo"];
+    if (target !== undefined) opsQuery.target = String(target);
+    value = await api.ops(
+      (sub ?? "status") as "status" | "dependencies" | "slo",
+      opsQuery,
+    );
+  } else throw new Error(`Unknown platform command: ${command}`);
+  out(resultEnvelope(command, { data: redactPlatformSecrets(value) }), flags);
+}
 async function main(argv: string[]) {
   if (argv.includes("--version")) {
     process.stdout.write(`${CLI_VERSION}\n`);
@@ -909,7 +1975,7 @@ async function main(argv: string[]) {
     validateCommandFlags(command, flags);
   if (!command || command === "--help" || command === "help") {
     out(
-      'npx okfshare@latest <setup|login|logout|whoami|doctor|init|validate|publish|list|open|update|push|rollback|log|diff|pull|search|context|bind|unbind|status|schema|skills|version>\n\nExamples:\n  npx okfshare@latest setup\n  npx okfshare@latest init ./knowledge --title "My notes"\n  npx okfshare@latest publish ./knowledge --yes\n  npx okfshare@latest diff SHARE_ID 2 3 --json\n  npx okfshare@latest bind SHARE_ID ./knowledge --revision 3\n\nUse npx okfshare@latest <command> --help for command-specific flags.',
+      'npx okfshare@latest <setup|login|logout|whoami|doctor|init|validate|publish|list|open|update|push|rollback|log|diff|pull|search|context|bind|unbind|status|fork|proposals|graph|blame|attest|refs|roles|bindings|orgs|teams|service-accounts|share-access|annotations|webhooks|rulesets|domains|audit|siem|governance|export|retention|billing|ops|integrity|capabilities|workspace-search|stars|redact|schema|skills|version>\n\nExamples:\n  npx okfshare@latest setup\n  npx okfshare@latest init ./knowledge --title "My notes"\n  npx okfshare@latest publish ./knowledge --yes\n  npx okfshare@latest graph snapshot SHARE_ID --json\n  npx okfshare@latest fork sync FORK_ID --yes --json\n  npx okfshare@latest bind SHARE_ID ./knowledge --revision 3\n\nUse npx okfshare@latest <command> --help for command-specific flags.',
       flags,
     );
     return;
@@ -1246,6 +2312,47 @@ async function main(argv: string[]) {
       flags,
     );
     if (!ok) process.exitCode = EXIT_CODES.usage;
+    return;
+  }
+  const platformCommands = new Set([
+    "fork",
+    "capabilities",
+    "workspace-search",
+    "source",
+    "stars",
+    "redact",
+    "integrity",
+    "share-access",
+    "annotations",
+    "webhooks",
+    "rulesets",
+    "domains",
+    "admin",
+    "graph",
+    "blame",
+    "attest",
+    "refs",
+    "roles",
+    "bindings",
+    "orgs",
+    "teams",
+    "service-accounts",
+    "audit",
+    "siem",
+    "governance",
+    "export",
+    "retention",
+    "billing",
+    "ops",
+  ]);
+  if (
+    platformCommands.has(command) ||
+    (command === "proposals" &&
+      ["detail", "reviewer", "review", "comment", "check", "reopen"].includes(
+        args[0] ?? "",
+      ))
+  ) {
+    await platformCommand(command, args, flags);
     return;
   }
   if (command === "bind") {
@@ -1920,6 +3027,9 @@ if (isEntryPoint(process.argv[1]))
                       : classified.code,
                 message,
                 status,
+                ...(error instanceof ApiError && error.details !== undefined
+                  ? { details: error.details }
+                  : {}),
                 ...(hint.hint ? { hint: hint.hint } : {}),
               },
             ],

@@ -9,6 +9,29 @@ export type ApiOptions = {
   userAgent?: string;
 };
 export const MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
+export type ApiRecord = Record<string, unknown>;
+export type ForkStatus = {
+  shareId: string;
+  upstreamShareId: string;
+  pinnedRevision: number | null;
+  baseRevision: number;
+  upstreamRevision: number;
+  localRevision: number;
+  aheadBy: number;
+  behindBy: number;
+  ahead: boolean;
+  behind: boolean;
+  diverged: boolean;
+  status: string;
+  currentStatus: string;
+  lastAttemptAt: number | null;
+  syncedAt: number | null;
+  conflictSummary: unknown;
+};
+export type Query = Record<
+  string,
+  string | number | boolean | string[] | undefined | null
+>;
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -204,6 +227,583 @@ export class ApiClient {
     } while (cursor);
     return { data, nextCursor: null };
   }
+  private query(params: Query = {}) {
+    const search = new URLSearchParams();
+    for (const [key, value] of Object.entries(params))
+      if (value !== undefined && value !== null)
+        search.set(key, Array.isArray(value) ? value.join(",") : String(value));
+    return search.toString();
+  }
+  private platform<T = ApiRecord>(
+    path: string,
+    method = "GET",
+    body?: unknown,
+    query?: Query,
+  ) {
+    const suffix = this.query(query);
+    return this.call<T>(path + (suffix ? `?${suffix}` : ""), {
+      method,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  }
+  graphSnapshot(id: string, query: Query = {}) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/graph`,
+      "GET",
+      undefined,
+      query,
+    );
+  }
+  graphNeighbors(id: string, query: Query = {}) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/graph/neighbors`,
+      "GET",
+      undefined,
+      query,
+    );
+  }
+  graphPath(id: string, query: Query = {}) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/graph/shortest-path`,
+      "GET",
+      undefined,
+      query,
+    );
+  }
+  graphDiff(id: string, query: Query = {}) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/graph/diff`,
+      "GET",
+      undefined,
+      query,
+    );
+  }
+  graphProvenance(id: string, query: Query = {}) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/graph/provenance`,
+      "GET",
+      undefined,
+      query,
+    );
+  }
+  graphRelated(id: string, query: Query = {}) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/graph/related`,
+      "GET",
+      undefined,
+      query,
+    );
+  }
+  /** The Worker exposes fork creation and synchronization as separate POSTs. */
+  forkCreate(id: string, payload: unknown = {}) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/fork`,
+      "POST",
+      payload,
+    );
+  }
+  forkSync(id: string) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/sync`,
+      "POST",
+      {},
+    );
+  }
+  forkStatus(id: string) {
+    return this.platform<{ data: ForkStatus }>(
+      `/api/v1/shares/${encodeURIComponent(id)}/fork/status`,
+    );
+  }
+  workspaceCapabilities(workspaceId: string) {
+    return this.platform(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/capabilities`,
+    );
+  }
+  shareCapabilities(id: string) {
+    return this.platform(`/api/shares/${encodeURIComponent(id)}/capabilities`);
+  }
+  workspaceSearch(query: string, params: Query = {}) {
+    return this.platform("/api/v1/workspace/search", "GET", undefined, {
+      q: query,
+      ...params,
+    });
+  }
+  source(
+    id: string,
+    revision: string | number,
+    path: string,
+    query: Query = {},
+  ) {
+    const safePath = path
+      .split("/")
+      .map((segment) => encodeURIComponent(segment))
+      .join("/");
+    return this.call<string>(
+      `/api/v1/shares/${encodeURIComponent(id)}/revisions/${encodeURIComponent(String(revision))}/source/${safePath}${this.query(query) ? `?${this.query(query)}` : ""}`,
+      { method: "GET" },
+    );
+  }
+  stars(id?: string, method = "GET") {
+    return this.platform(
+      id ? `/api/v1/shares/${encodeURIComponent(id)}/star` : "/api/v1/me/stars",
+      method,
+    );
+  }
+  redact(id: string, reason: string, idempotencyKey: string, dryRun = false) {
+    return this.call<Record<string, unknown>>(
+      `/api/v1/shares/${encodeURIComponent(id)}/redact${dryRun ? "?dryRun=1" : ""}`,
+      {
+        method: "POST",
+        headers: { "idempotency-key": idempotencyKey },
+        body: JSON.stringify({ reason }),
+      },
+    );
+  }
+  workspaceGraphSearch(id: string, query: Query = {}) {
+    return this.platform(
+      `/api/v1/workspaces/${encodeURIComponent(id)}/graph/search`,
+      "GET",
+      undefined,
+      query,
+    );
+  }
+  blame(id: string, query: Query = {}) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/blame`,
+      "GET",
+      undefined,
+      query,
+    );
+  }
+  semanticBlame(id: string, query: Query = {}) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/blame/semantic`,
+      "GET",
+      undefined,
+      query,
+    );
+  }
+  revisionIntegrity(id: string, revision?: string, query: Query = {}) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/revisions${revision ? `/${encodeURIComponent(revision)}` : ""}/integrity`,
+      "GET",
+      undefined,
+      query,
+    );
+  }
+  attestSubmit(id: string, revision: string, payload: unknown) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revision)}/attestations`,
+      "POST",
+      payload,
+    );
+  }
+  attestList(id: string, revision: string) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revision)}/attestations`,
+    );
+  }
+  attestVerify(id: string, revision: string, attestationId?: string) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revision)}/attestations${attestationId ? `/${encodeURIComponent(attestationId)}/verify` : "/verify"}`,
+      "POST",
+      {},
+    );
+  }
+  refs(id: string) {
+    return this.platform(`/api/v1/shares/${encodeURIComponent(id)}/refs`);
+  }
+  ref(id: string, label: string, resolve = false) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/refs/${encodeURIComponent(label)}`,
+      "GET",
+      undefined,
+      resolve ? { resolve: 1 } : {},
+    );
+  }
+  resolveRef(id: string, spec = "current") {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/refs/resolve`,
+      "GET",
+      undefined,
+      { spec },
+    );
+  }
+  createRef(id: string, payload: unknown) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/refs`,
+      "POST",
+      payload,
+    );
+  }
+  moveRef(id: string, label: string, payload: unknown) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/refs/${encodeURIComponent(label)}`,
+      "PUT",
+      payload,
+    );
+  }
+  deleteRef(id: string, label: string, expectedRevisionId?: string) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/refs/${encodeURIComponent(label)}`,
+      "DELETE",
+      undefined,
+      expectedRevisionId === undefined ? {} : { expectedRevisionId },
+    );
+  }
+  proposalDetail(id: string) {
+    return this.platform(`/api/v1/proposals/${encodeURIComponent(id)}`);
+  }
+  proposalAction(id: string, action: "reopen" | "merge" | "reject") {
+    return this.platform(
+      `/api/v1/proposals/${encodeURIComponent(id)}/${action}`,
+      "POST",
+      {},
+    );
+  }
+  proposalReviewer(id: string, payload: unknown, remove = false) {
+    return this.platform(
+      `/api/v1/proposals/${encodeURIComponent(id)}/reviewers`,
+      remove ? "DELETE" : "POST",
+      payload,
+    );
+  }
+  proposalReview(id: string, payload: unknown) {
+    return this.platform(
+      `/api/v1/proposals/${encodeURIComponent(id)}/reviews`,
+      "POST",
+      payload,
+    );
+  }
+  proposalComment(id: string, payload: unknown) {
+    return this.platform(
+      `/api/v1/proposals/${encodeURIComponent(id)}/comments`,
+      "POST",
+      payload,
+    );
+  }
+  proposalCheck(id: string, payload: unknown) {
+    return this.platform(
+      `/api/v1/proposals/${encodeURIComponent(id)}/checks`,
+      "POST",
+      payload,
+    );
+  }
+  annotations(id: string, query: Query = {}) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/annotations`,
+      "GET",
+      undefined,
+      query,
+    );
+  }
+  annotationCreate(id: string, payload: unknown) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/annotations`,
+      "POST",
+      payload,
+    );
+  }
+  annotationResolve(id: string) {
+    return this.platform(
+      `/api/v1/annotations/${encodeURIComponent(id)}/resolve`,
+      "POST",
+      {},
+    );
+  }
+  shareRoles(id: string, query: Query = {}) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/roles`,
+      "GET",
+      undefined,
+      query,
+    );
+  }
+  shareRoleMutation(
+    id: string,
+    method: string,
+    payload?: unknown,
+    query: Query = {},
+  ) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/roles`,
+      method,
+      payload,
+      query,
+    );
+  }
+  shareGrants(id: string, query: Query = {}) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/grants`,
+      "GET",
+      undefined,
+      query,
+    );
+  }
+  shareGrantCreate(id: string, payload: unknown) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/grants`,
+      "POST",
+      payload,
+    );
+  }
+  shareGrantDelete(id: string, grantId: string) {
+    return this.platform(
+      `/api/v1/shares/${encodeURIComponent(id)}/grants/${encodeURIComponent(grantId)}`,
+      "DELETE",
+    );
+  }
+  roles(workspaceId: string) {
+    return this.platform(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/roles`,
+    );
+  }
+  role(workspaceId: string, roleId: string) {
+    return this.platform(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/roles/${encodeURIComponent(roleId)}`,
+    );
+  }
+  roleMutation(
+    workspaceId: string,
+    roleId: string | undefined,
+    method: string,
+    payload?: unknown,
+  ) {
+    return this.platform(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/roles${roleId ? `/${encodeURIComponent(roleId)}` : ""}`,
+      method,
+      payload,
+    );
+  }
+  bindings(workspaceId: string, query: Query = {}) {
+    return this.platform(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/role-bindings`,
+      "GET",
+      undefined,
+      query,
+    );
+  }
+  bindingMutation(
+    workspaceId: string,
+    bindingId: string | undefined,
+    method: string,
+    payload?: unknown,
+  ) {
+    return this.platform(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/role-bindings${bindingId ? `/${encodeURIComponent(bindingId)}` : ""}`,
+      method,
+      payload,
+    );
+  }
+  organizations() {
+    return this.platform("/api/workspaces");
+  }
+  organization(id: string) {
+    return this.platform(`/api/workspaces/${encodeURIComponent(id)}`);
+  }
+  organizationMutation(
+    id: string | undefined,
+    method: string,
+    payload?: unknown,
+  ) {
+    return this.platform(
+      `/api/workspaces${id ? `/${encodeURIComponent(id)}` : ""}`,
+      method,
+      payload,
+    );
+  }
+  transferOwnership(id: string, userId: string) {
+    return this.platform(
+      `/api/workspaces/${encodeURIComponent(id)}/transfer`,
+      "POST",
+      { userId },
+    );
+  }
+  teams(workspaceId: string) {
+    return this.platform(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/teams`,
+    );
+  }
+  teamMutation(
+    workspaceId: string,
+    teamId: string | undefined,
+    method: string,
+    payload?: unknown,
+  ) {
+    return this.platform(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/teams${teamId ? `/${encodeURIComponent(teamId)}` : ""}`,
+      method,
+      payload,
+    );
+  }
+  teamMembers(
+    workspaceId: string,
+    teamId: string,
+    memberId?: string,
+    method = "GET",
+    payload?: unknown,
+  ) {
+    return this.platform(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/teams/${encodeURIComponent(teamId)}/members${memberId ? `/${encodeURIComponent(memberId)}` : ""}`,
+      method,
+      payload,
+    );
+  }
+  organizationAdministrators(workspaceId: string) {
+    return this.platform(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/administrators`,
+    );
+  }
+  setOrganizationAdministrators(workspaceId: string, payload: unknown) {
+    return this.platform(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/administrators`,
+      "PATCH",
+      payload,
+    );
+  }
+  serviceAccounts(workspaceId: string) {
+    return this.platform(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/service-accounts`,
+    );
+  }
+  serviceAccountMutation(
+    workspaceId: string,
+    accountId: string | undefined,
+    method: string,
+    payload?: unknown,
+  ) {
+    return this.platform(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/service-accounts${accountId ? `/${encodeURIComponent(accountId)}` : ""}`,
+      method,
+      payload,
+    );
+  }
+  serviceAccountEnable(workspaceId: string, accountId: string) {
+    return this.platform(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/service-accounts/${encodeURIComponent(accountId)}/enable`,
+      "POST",
+    );
+  }
+  serviceAccountDisable(workspaceId: string, accountId: string) {
+    return this.platform(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/service-accounts/${encodeURIComponent(accountId)}/disable`,
+      "POST",
+    );
+  }
+  credentials(workspaceId: string, accountId: string) {
+    return this.platform(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/service-accounts/${encodeURIComponent(accountId)}/credentials`,
+    );
+  }
+  credentialMutation(
+    workspaceId: string,
+    accountId: string,
+    credentialId: string | undefined,
+    method: string,
+    payload?: unknown,
+  ) {
+    return this.platform(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/service-accounts/${encodeURIComponent(accountId)}/credentials${credentialId ? `/${encodeURIComponent(credentialId)}` : ""}`,
+      method,
+      payload,
+    );
+  }
+  audit(query: Query = {}) {
+    return this.platform("/api/audit", "GET", undefined, query);
+  }
+  auditVerify() {
+    // The Worker verifies the hash chain as part of GET /api/audit and returns
+    // it in the `integrity` member; there is deliberately no invented verify
+    // endpoint.
+    return this.audit({ limit: 1 });
+  }
+  auditExport(format: "csv" | "ndjson", query: Query = {}) {
+    return this.platform(
+      `/api/audit/export.${format}`,
+      "GET",
+      undefined,
+      query,
+    );
+  }
+  siem(workspaceId: string, id?: string) {
+    return this.platform(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/siem-webhooks${id ? `/${encodeURIComponent(id)}` : ""}`,
+    );
+  }
+  siemMutation(
+    workspaceId: string,
+    id: string | undefined,
+    method: string,
+    payload?: unknown,
+  ) {
+    return this.platform(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/siem-webhooks${id ? `/${encodeURIComponent(id)}` : ""}`,
+      method,
+      payload,
+    );
+  }
+  webhooks(id?: string, method = "GET", payload?: unknown) {
+    return this.platform(
+      `/api/v1/webhooks${id ? `/${encodeURIComponent(id)}` : ""}`,
+      method,
+      payload,
+    );
+  }
+  rulesets(
+    workspaceId: string,
+    id?: string,
+    method = "GET",
+    payload?: unknown,
+  ) {
+    return this.platform(
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/rulesets${id ? `/${encodeURIComponent(id)}` : ""}`,
+      method,
+      payload,
+    );
+  }
+  rulesetAction(
+    workspaceId: string,
+    action: "evaluate" | "validate",
+    id?: string,
+    payload?: unknown,
+  ) {
+    return this.platform(
+      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/rulesets${id ? `/${encodeURIComponent(id)}` : ""}/${action}`,
+      "POST",
+      payload,
+    );
+  }
+  admin(path = "access", method = "GET", payload?: unknown) {
+    return this.platform(`/api/admin/${path}`, method, payload);
+  }
+  governance(path: string, method = "GET", payload?: unknown) {
+    return this.platform(`/api/v1/governance/${path}`, method, payload);
+  }
+  portability(
+    target: "workspace" | "share" | "account",
+    shareId?: string,
+    query: Query = {},
+  ) {
+    return this.platform(
+      `/api/v1/export/${target}${shareId ? `/${encodeURIComponent(shareId)}` : ""}`,
+      "GET",
+      undefined,
+      query,
+    );
+  }
+  retention(apply = false, payload?: unknown) {
+    return this.platform(
+      apply ? "/api/retention/apply" : "/api/retention",
+      apply ? "POST" : "GET",
+      payload,
+    );
+  }
+  billing() {
+    return this.platform("/api/billing");
+  }
+  ops(kind: "status" | "dependencies" | "slo", query: Query = {}) {
+    return this.platform(`/api/ops/${kind}`, "GET", undefined, query);
+  }
   open(id: string) {
     return this.call<Record<string, unknown>>(
       `/api/shares/${encodeURIComponent(id)}`,
@@ -219,6 +819,12 @@ export class ApiClient {
         headers,
         body: JSON.stringify(payload),
       },
+    );
+  }
+  updateMetadata(id: string, payload: unknown) {
+    return this.call<Record<string, unknown>>(
+      `/api/v1/shares/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify(payload) },
     );
   }
   patch(
@@ -249,7 +855,11 @@ export class ApiClient {
   proposals(shareId: string) {
     return this.call<{ data: unknown[] }>(
       `/api/v1/shares/${encodeURIComponent(shareId)}/proposals`,
+      { method: "GET" },
     );
+  }
+  proposalList(shareId: string) {
+    return this.proposals(shareId);
   }
   mergeProposal(proposalId: string) {
     return this.call<Record<string, unknown>>(

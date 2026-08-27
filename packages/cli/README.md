@@ -135,6 +135,82 @@ npx okfshare@latest skills status okfshare --scope user
 npx okfshare@latest skills uninstall okfshare --scope user --yes
 ```
 
+## Platform operations
+
+The authenticated CLI exposes the platform APIs without changing the device
+login flow. All commands support `--json`; mutating commands require `--yes` in
+non-interactive use.
+
+```sh
+npx okfshare@latest graph snapshot SHARE_ID --revision 3 --json
+npx okfshare@latest graph search WORKSPACE_ID --q "machine learning" --limit 20
+npx okfshare@latest blame semantic SHARE_ID --q "deployment safety"
+npx okfshare@latest attest submit SHARE_ID 3 --public-key KEY --signature SIG --data '{"claim":{}}'
+npx okfshare@latest refs create SHARE_ID --ref-type tag --label v1 --target-revision-id REV --yes
+npx okfshare@latest proposals detail PROPOSAL_ID --json
+npx okfshare@latest proposals list SHARE_ID --json
+npx okfshare@latest roles list WORKSPACE_ID --json
+npx okfshare@latest service-accounts issue WORKSPACE_ID ACCOUNT_ID --data '{"scopes":["workspace:read"]}'
+npx okfshare@latest audit export --format ndjson > audit.ndjson
+npx okfshare@latest governance retention list --json
+npx okfshare@latest export account --format ndjson > export.ndjson
+npx okfshare@latest retention dry-run --json
+npx okfshare@latest billing aggregate --json
+npx okfshare@latest ops status --json
+npx okfshare@latest capabilities workspace WORKSPACE_ID --json
+npx okfshare@latest capabilities share SHARE_ID --json
+npx okfshare@latest orgs administrators get WORKSPACE_ID --json
+npx okfshare@latest orgs administrators set WORKSPACE_ID --data '{"billingOwnerId":"USER_ID"}' --yes --json
+npx okfshare@latest workspace-search "machine learning" --limit 20 --json
+npx okfshare@latest stars add SHARE_ID --yes --json
+```
+
+Service-account credentials and SIEM webhook secrets are never printed by the
+CLI, even when the server returns them once. Public keys and signatures are
+inputs only; private keys are never accepted or uploaded.
+
+### Non-auth command matrix
+
+These stable wrappers match the mounted Worker routes. Every command accepts
+`--json`; destructive mutations require `--yes` or `--dry-run` in noninteractive
+use. Server cursors and conflict details are preserved in JSON output.
+
+| Area          | Commands                                                                         |
+| ------------- | -------------------------------------------------------------------------------- |
+| Forks         | `fork create SHARE_ID`, `fork status FORK_ID`, `fork sync FORK_ID`               |
+| Proposals     | `proposals list                                                                  | propose                                                           | detail                         | reviewer  | review     | comment                                              | check   | merge | reopen | reject` |
+| Refs          | `refs list                                                                       | get                                                               | resolve                        | create    | move       | delete SHARE_ID`; branches, channels, tags, releases |
+| Revisions     | `log`, `diff`, `integrity SHARE_ID [REVISION]` (provenance and parents included) |
+| Trust         | `attest submit                                                                   | list                                                              | verify`, `blame line           | semantic` |
+| Graph         | `graph snapshot                                                                  | neighbors                                                         | path                           | diff      | provenance | related                                              | search` |
+| Access        | `share-access roles                                                              | grants                                                            | private SHARE_ID`              |
+| Organizations | `orgs`, `orgs administrators get                                                 | set`, `teams`, `roles`, `bindings`, `domains`, `service-accounts` |
+| Governance    | `rulesets`, `governance retention                                                | legal-hold                                                        | policy`, `retention`, `export` |
+| Operations    | `audit list                                                                      | export`, `siem`, `webhooks`, `billing`, `ops status               | dependencies                   | slo`      |
+| Discovery     | `explore`, `workspace-search QUERY`, `stars list                                 | add                                                               | remove SHARE_ID`               |
+| Safety        | `redact SHARE_ID --reason REASON`                                                |
+| Source        | `source SHARE_ID REVISION PATH`                                                  |
+
+```sh
+npx okfshare@latest fork sync FORK_ID --yes --json
+npx okfshare@latest proposals comment PROPOSAL_ID --parent-id COMMENT_ID --data '{"body":"Please clarify this change"}' --json
+npx okfshare@latest refs move SHARE_ID main --target-revision-id REV --expected-revision-id OLD --yes --json
+npx okfshare@latest integrity SHARE_ID 3 --json
+npx okfshare@latest share-access grants create SHARE_ID --data '{"granteeType":"workspace","granteeId":"WORKSPACE_ID","role":"reader"}' --yes --json
+npx okfshare@latest webhooks create --data '{"url":"https://example.test/hook","events":["revision.published"]}' --yes --json
+npx okfshare@latest rulesets evaluate WORKSPACE_ID --data '{"visibility":"public"}' --json
+npx okfshare@latest fork status FORK_ID --json
+npx okfshare@latest redact SHARE_ID --reason "Remove regulated content" --yes --json
+```
+
+Fork status uses `GET /api/v1/shares/:id/fork/status` and preserves the returned
+status, revision, timing, and conflict summary fields. Capability commands expose
+the server's `allows`, `denies`, `effectiveAllows`, `effectiveDenies`,
+`permissions`, and action booleans without client-side reinterpretation. Export
+responses are streamed NDJSON/tar responses rather than JSON envelopes; the
+`X-Export-Truncated` header is the truncation contract. Authentication expansion
+(SSO, SCIM, MFA, and session commands) is intentionally excluded.
+
 ## Authentication storage
 
 `OKFSHARE_TOKEN` takes precedence over stored credentials. It is verified before pairing;

@@ -17,6 +17,12 @@ import {
 } from "./bundle.js";
 
 type RemoteFile = { path: string; content: string };
+/** Export endpoints intentionally return descriptors, never bundle content. */
+export function decodeExportBody(value: unknown): string | Uint8Array {
+  if (typeof value === "string") return value;
+  if (value instanceof Uint8Array) return value;
+  throw new Error("Invalid portability export response");
+}
 type PullData = {
   share: {
     id: string;
