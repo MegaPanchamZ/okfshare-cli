@@ -16,7 +16,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json",
-    "test": "rm -rf .test-dist && tsc --ignoreConfig --target ES2022 --module NodeNext --moduleResolution NodeNext --esModuleInterop --skipLibCheck --types node --outDir .test-dist src/index.ts tests/platform.test.ts && node --test .test-dist/tests/platform.test.js"
+    "test": "rm -rf .test-dist && tsc -p tsconfig.test.json && node --test .test-dist/tests/platform.test.js"
   },
   "repository": {
     "type": "git",
