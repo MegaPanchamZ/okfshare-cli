@@ -43,6 +43,18 @@ jobs:
       - name: Upgrade npm for trusted publishing (OIDC needs >= 11.5.1)
         run: npm install -g npm@latest
 
-      - name: Publish with trusted publishing + provenance
+      - name: Pack (rewrite workspace dependencies)
+        id: pack
+        # `npm publish` does not understand pnpm's `workspace:*` protocol and
+        # would ship it verbatim, producing an uninstallable tarball. Pack with
+        # pnpm first so workspace deps are rewritten to concrete versions.
         working-directory: packages/${{ inputs.package }}
-        run: npm publish --access public --provenance --tag "${{ inputs.tag }}"
+        run: |
+          set -euo pipefail
+          pnpm pack --pack-destination "$RUNNER_TEMP" >/dev/null
+          name="$(node -p "require('./package.json').name.replace('@','').replace('/','-')")"
+          version="$(node -p "require('./package.json').version")"
+          echo "tarball=$RUNNER_TEMP/${name}-${version}.tgz" >> "$GITHUB_OUTPUT"
+
+      - name: Publish with trusted publishing + provenance
+        run: npm publish "${{ steps.pack.outputs.tarball }}" --access public --provenance --tag "${{ inputs.tag }}"
