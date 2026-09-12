@@ -31,7 +31,7 @@ import {
 } from "./bindings.js";
 import { detectTargets } from "@okfshare/agent-installer";
 
-export const CLI_VERSION = "0.3.0";
+export const CLI_VERSION = "0.5.2";
 export const RESULT_SCHEMA_VERSION = 1;
 export const CANONICAL_API_ORIGIN = "https://okfshare.app";
 type CommandSpec = {
