@@ -195,6 +195,24 @@ export class ApiClient {
   whoami() {
     return this.call<unknown>("/api/workspace").then(decodeWhoamiResponse);
   }
+  /**
+   * Workspace entitlements as the server enforces them.
+   *
+   * Returns null when the call fails so callers fall back to the local Free
+   * defaults rather than blocking on an unreachable API. A network failure
+   * should never turn into "your bundle is too large".
+   */
+  async entitlements(): Promise<Record<string, unknown> | null> {
+    try {
+      const data = await this.call<Record<string, unknown>>("/api/workspace");
+      const limits = (data as { limits?: unknown })?.limits;
+      return limits && typeof limits === "object" && !Array.isArray(limits)
+        ? (limits as Record<string, unknown>)
+        : null;
+    } catch {
+      return null;
+    }
+  }
   health() {
     return this.call<{ ok: boolean; db?: string }>("/health");
   }

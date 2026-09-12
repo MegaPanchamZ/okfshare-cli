@@ -11,6 +11,8 @@ import {
   validateBundle,
   type BundleOverrides,
 } from "./bundle.js";
+import { resolveLimits, SAFE_MAX_LIMITS, type BundleLimits } from "./limits.js";
+import { ingestRepository } from "./ingest.js";
 import { errorHint, renderHuman, str } from "./render.js";
 import { forgetBundle, listBundles, rememberBundle } from "./localstore.js";
 import { ApiClient, ApiError, decodePairingExchangeResponse } from "./api.js";
@@ -52,6 +54,24 @@ type CommandSpec = {
 };
 
 const commandSpecs: Record<string, CommandSpec> = {
+  ingest: {
+    description:
+      "Discover repository knowledge (README, rules, docs, ADRs) and generate a validated local OKF draft",
+    args: [
+      { name: "REPO_DIR", required: false, hint: "default: ." },
+      { name: "OUTPUT_DIR", required: false, hint: "default: ./knowledge" },
+    ],
+    flags: {
+      output: {
+        type: "string",
+        hint: "output directory for OKF draft (default: ./knowledge)",
+      },
+      title: { type: "string", hint: "override bundle title" },
+      description: { type: "string", hint: "override bundle description" },
+      topic: { type: "string[]", hint: "topic labels (max 8)" },
+    },
+    mutates: true,
+  },
   validate: {
     description: "Validate a directory as an OKF bundle without publishing",
     args: [{ name: "DIR", required: false, hint: "default: ." }],
@@ -438,6 +458,7 @@ export function parseFlags(args: string[]): {
         "mode",
         "title",
         "description",
+        "output",
         "root",
         "visibility",
         "password",
@@ -538,6 +559,7 @@ const commands = new Set([
   "whoami",
   "doctor",
   "init",
+  "ingest",
   "validate",
   "publish",
   "list",
@@ -644,6 +666,7 @@ const commandFlags: Record<string, Set<string>> = {
     "file",
   ]),
   init: new Set(["title", "description"]),
+  ingest: new Set(["output", "title", "description", "topic"]),
   rollback: new Set(["expected-revision"]),
   fork: new Set([]),
   proposals: new Set([
@@ -809,6 +832,8 @@ export const commandHelp: Record<string, string> = {
     "npx okfshare@latest update SHARE_ID DIR [--title TEXT] [--description TEXT] [--topic TOPIC]... [--root PATH] [--visibility public|unlisted|password] [--password-stdin] [--expected-revision REVISION] [--yes|--dry-run] [--json]",
   push: "npx okfshare@latest push [SHARE_ID] [DIR] [--expected-revision REVISION] [--yes|--dry-run] [--json]  (alias of update)",
   init: "npx okfshare@latest init [DIR] [--title TEXT] [--description TEXT]",
+  ingest:
+    "npx okfshare@latest ingest [REPO_DIR] [OUTPUT_DIR] [--output DIR] [--title TEXT] [--description TEXT] [--topic TOPIC]... [--yes|--dry-run] [--json]",
   log: "npx okfshare@latest log SHARE_ID [--api-url URL] [--json]",
   schema: "npx okfshare@latest schema [--command NAME] [--json]",
   completions: "npx okfshare@latest completions bash|zsh|fish",
@@ -1099,15 +1124,38 @@ async function passwordFlags(flags: Flags): Promise<Flags> {
     return { ...flags, password: await readPassword() };
   return flags;
 }
+/**
+ * Bundle ceilings for the authenticated workspace.
+ *
+ * The server is authoritative on the write path, but the CLI validates locally
+ * before uploading. Fetching the real entitlements keeps a Pro workspace from
+ * being rejected client-side by Free-tier caps; on any failure the local
+ * defaults apply so an unreachable API never blocks a legitimate publish.
+ */
+let cachedLimits: BundleLimits | null = null;
+async function serverLimits(): Promise<BundleLimits> {
+  if (cachedLimits) return cachedLimits;
+  try {
+    const client = await authClient();
+    const entitlements = await client.entitlements();
+    cachedLimits = resolveLimits(entitlements);
+  } catch {
+    cachedLimits = resolveLimits(null);
+  }
+  return cachedLimits;
+}
+
 async function bundlePayload(directory: string, flags: Flags) {
   flags = await passwordFlags(flags);
+  const limits = await serverLimits();
   const bundle = await collectBundleWithOverrides(
     directory,
     bundleOverrides(flags),
+    limits,
   );
   if (!bundle.root)
     throw new Error("A bundle-root README.md or index.md is required");
-  const errors = validateBundle(bundle);
+  const errors = validateBundle(bundle, limits);
   if (errors.length) throw new Error(errors.join("; "));
   return {
     title: bundle.title ?? bundle.root,
@@ -1975,7 +2023,7 @@ async function main(argv: string[]) {
     validateCommandFlags(command, flags);
   if (!command || command === "--help" || command === "help") {
     out(
-      'npx okfshare@latest <setup|login|logout|whoami|doctor|init|validate|publish|list|open|update|push|rollback|log|diff|pull|search|context|bind|unbind|status|fork|proposals|graph|blame|attest|refs|roles|bindings|orgs|teams|service-accounts|share-access|annotations|webhooks|rulesets|domains|audit|siem|governance|export|retention|billing|ops|integrity|capabilities|workspace-search|stars|redact|schema|skills|version>\n\nExamples:\n  npx okfshare@latest setup\n  npx okfshare@latest init ./knowledge --title "My notes"\n  npx okfshare@latest publish ./knowledge --yes\n  npx okfshare@latest graph snapshot SHARE_ID --json\n  npx okfshare@latest fork sync FORK_ID --yes --json\n  npx okfshare@latest bind SHARE_ID ./knowledge --revision 3\n\nUse npx okfshare@latest <command> --help for command-specific flags.',
+      'npx okfshare@latest <setup|login|logout|whoami|doctor|init|ingest|validate|publish|list|open|update|push|rollback|log|diff|pull|search|context|bind|unbind|status|fork|proposals|graph|blame|attest|refs|roles|bindings|orgs|teams|service-accounts|share-access|annotations|webhooks|rulesets|domains|audit|siem|governance|export|retention|billing|ops|integrity|capabilities|workspace-search|stars|redact|schema|skills|version>\n\nExamples:\n  npx okfshare@latest setup\n  npx okfshare@latest init ./knowledge --title "My notes"\n  npx okfshare@latest ingest . ./knowledge --yes\n  npx okfshare@latest publish ./knowledge --yes\n  npx okfshare@latest graph snapshot SHARE_ID --json\n  npx okfshare@latest fork sync FORK_ID --yes --json\n  npx okfshare@latest bind SHARE_ID ./knowledge --revision 3\n\nUse npx okfshare@latest <command> --help for command-specific flags.',
       flags,
     );
     return;
@@ -2046,6 +2094,34 @@ async function main(argv: string[]) {
         created,
         next: [`npx okfshare@latest validate ${directory}`],
       }),
+      flags,
+    );
+    return;
+  }
+  if (command === "ingest") {
+    const repoDir = args[0] ?? ".";
+    const outputDir =
+      typeof flags.output === "string" && flags.output.trim()
+        ? flags.output.trim()
+        : (args[1] ?? "./knowledge");
+    await confirmChange(flags, `generate local OKF draft in ${outputDir}`);
+    const topics = Array.isArray(flags.topic)
+      ? (flags.topic as string[])
+      : typeof flags.topic === "string"
+        ? [flags.topic]
+        : undefined;
+    const result = await ingestRepository(repoDir, outputDir, {
+      output: outputDir,
+      title: typeof flags.title === "string" ? flags.title : undefined,
+      description:
+        typeof flags.description === "string" ? flags.description : undefined,
+      topics,
+      dryRun: flags.dryRun === true,
+      yes: flags.yes === true,
+      limits: await serverLimits(),
+    });
+    out(
+      resultEnvelope("ingest", result as unknown as Record<string, unknown>),
       flags,
     );
     return;
@@ -2278,11 +2354,16 @@ async function main(argv: string[]) {
         checks.binding as { binding?: { bundlePath: string; digest?: string } }
       ).binding;
       try {
-        const bundle = await collectBundle(binding?.bundlePath ?? ".");
+        // Read-only diagnostic: judge the bundle against the hard absolute
+        // ceilings so a Pro-sized bundle is not misreported as invalid.
+        const bundle = await collectBundle(
+          binding?.bundlePath ?? ".",
+          SAFE_MAX_LIMITS,
+        );
         checks.binding = {
           ...(checks.binding as object),
           local: {
-            valid: validateBundle(bundle).length === 0,
+            valid: validateBundle(bundle, SAFE_MAX_LIMITS).length === 0,
             digest: bundleDigest(bundle),
             diverged: bundleDigest(bundle) !== binding?.digest,
           },
@@ -2359,7 +2440,9 @@ async function main(argv: string[]) {
     const shareId = args[0];
     const directory = args[1] ?? ".";
     if (!shareId) throw new Error("A share id is required");
-    const bundle = await collectBundle(directory);
+    // Digest computation only; the hard absolute ceilings keep a Pro-sized
+    // local bundle from failing to bind.
+    const bundle = await collectBundle(directory, SAFE_MAX_LIMITS);
     const binding = await writeBinding(directory, {
       shareId,
       bundlePath: ".",
@@ -2425,7 +2508,10 @@ async function main(argv: string[]) {
     const status = await (targetDir ? bindingStatus(targetDir) : cwdBound!);
     if (status.bound && status.binding) {
       try {
-        const current = await collectBundle(status.binding.bundlePath);
+        const current = await collectBundle(
+          status.binding.bundlePath,
+          SAFE_MAX_LIMITS,
+        );
         status.stale =
           status.stale || status.binding.digest !== bundleDigest(current);
         (status as Record<string, unknown>).digest = bundleDigest(current);
@@ -2447,12 +2533,14 @@ async function main(argv: string[]) {
   }
   if (command === "validate") {
     const directory = args[0] ?? ".";
+    const limits = await serverLimits();
     const bundle = await collectBundleWithOverrides(
       directory,
       bundleOverrides(flags),
+      limits,
     );
     const errors = bundle.root
-      ? validateBundle(bundle)
+      ? validateBundle(bundle, limits)
       : ["A bundle-root README.md or index.md is required"];
     if (errors.length) throw new Error(errors.join("; "));
     out(
@@ -2807,7 +2895,10 @@ async function main(argv: string[]) {
       const bound = await bindingStatus(".");
       if (bound.bound && bound.binding && bound.binding.shareId === shareId) {
         try {
-          const pulledBundle = await collectBundle(destination);
+          const pulledBundle = await collectBundle(
+            destination,
+            SAFE_MAX_LIMITS,
+          );
           await writeBinding(".", {
             ...bound.binding,
             bundlePath: destination,

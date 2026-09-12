@@ -120,7 +120,7 @@ describe("retrieval pull safety", () => {
         true,
       ),
     ).rejects.toThrow("Root");
-    const tooMany = Array.from({ length: 26 }, (_, index) => ({
+    const tooMany = Array.from({ length: 251 }, (_, index) => ({
       path: index ? `file-${index}.md` : "README.md",
       content: rootContent,
     }));
@@ -129,14 +129,14 @@ describe("retrieval pull safety", () => {
     ).rejects.toThrow("file limit");
     await expect(
       pullBundle(
-        response([{ path: "README.md", content: "x".repeat(100_001) }]),
+        response([{ path: "README.md", content: "x".repeat(500_001) }]),
         join(tmpdir(), "unused"),
         true,
       ),
     ).rejects.toThrow("byte file limit");
-    const tooLarge = Array.from({ length: 11 }, (_, index) => ({
+    const tooLarge = Array.from({ length: 25 }, (_, index) => ({
       path: index ? `file-${index}.md` : "README.md",
-      content: "x".repeat(100_000),
+      content: "x".repeat(450_000),
     }));
     await expect(
       pullBundle(response(tooLarge), join(tmpdir(), "unused"), true),

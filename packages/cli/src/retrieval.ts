@@ -9,7 +9,7 @@ import {
   mkdir,
 } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { LIMITS } from "./limits.js";
+import { SAFE_MAX_LIMITS, LIMITS, type BundleLimits } from "./limits.js";
 import {
   isSafeRelativeMarkdownPath,
   validateBundle,
@@ -72,7 +72,17 @@ function decodedPathIsUnsafe(path: string): boolean {
   );
 }
 
-export function decodePullBundle(data: unknown): PullData {
+/**
+ * Decode a pull response against retrieval ceilings.
+ *
+ * Defaults to the hard absolute ceilings (SAFE_MAX_LIMITS) rather than the
+ * caller's plan limits: the publisher's plan, not the reader's, determined what
+ * the server accepted, and the server never stores more than those ceilings.
+ */
+export function decodePullBundle(
+  data: unknown,
+  limits: BundleLimits = SAFE_MAX_LIMITS,
+): PullData {
   if (!data || typeof data !== "object" || !("data" in data))
     throw new Error("Invalid bundle response");
   const value = (data as { data?: unknown }).data;
@@ -106,17 +116,17 @@ export function decodePullBundle(data: unknown): PullData {
     seen.add(file.path);
     collisionKeys.add(key);
     const bytes = Buffer.byteLength(file.content);
-    if (bytes > LIMITS.maxFileBytes)
+    if (bytes > limits.maxFileBytes)
       throw new Error(
-        `${file.path} exceeds the ${LIMITS.maxFileBytes} byte file limit`,
+        `${file.path} exceeds the ${limits.maxFileBytes} byte file limit`,
       );
     totalBytes += bytes;
     remoteFiles.push({ path: file.path, content: file.content });
   }
-  if (remoteFiles.length > LIMITS.maxFiles)
-    throw new Error(`Bundle exceeds the ${LIMITS.maxFiles} file limit`);
-  if (totalBytes > LIMITS.maxBundleBytes)
-    throw new Error(`Bundle exceeds the ${LIMITS.maxBundleBytes} byte limit`);
+  if (remoteFiles.length > limits.maxFiles)
+    throw new Error(`Bundle exceeds the ${limits.maxFiles} file limit`);
+  if (totalBytes > limits.maxBundleBytes)
+    throw new Error(`Bundle exceeds the ${limits.maxBundleBytes} byte limit`);
   if (
     typeof bundle.root !== "string" ||
     decodedPathIsUnsafe(bundle.root) ||
@@ -161,7 +171,7 @@ export function decodePullBundle(data: unknown): PullData {
   } as Bundle;
   if (revision.sizeBytes < totalBytes)
     throw new Error("Stored revision bytes are smaller than source bytes");
-  const errors = validateBundle(candidate);
+  const errors = validateBundle(candidate, limits);
   if (errors.length) throw new Error(errors.join("; "));
   return {
     share: share as PullData["share"],
@@ -204,8 +214,9 @@ export async function pullBundle(
   response: unknown,
   destination: string,
   dryRun = false,
+  limits: BundleLimits = SAFE_MAX_LIMITS,
 ) {
-  const pulled = decodePullBundle(response);
+  const pulled = decodePullBundle(response, limits);
   const target = resolve(destination);
   const parent = dirname(target);
   await destinationState(target);

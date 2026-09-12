@@ -1,5 +1,7 @@
 # @okfshare/mcp
 
+[![M8ven Score](https://m8ven.ai/badge/mcp/megapanchamz-okfshare-cli-10zm6w?v=1c087a88e0be1f0d168bba1c29292149)](https://m8ven.ai/mcp/megapanchamz-okfshare-cli-10zm6w)
+
 Model Context Protocol (MCP) server for [okfshare](https://okfshare.app) - shared,
 versioned knowledge for AI coding agents.
 

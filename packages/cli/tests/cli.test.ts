@@ -76,6 +76,31 @@ describe("CLI parsing", () => {
     ]);
     expect(parsed.flags.topic).toEqual(["ai", "design"]);
     expect(() => validateCommandFlags("publish", parsed.flags)).not.toThrow();
+
+    const ingestParsed = parseFlags([
+      "ingest",
+      ".",
+      "custom-out",
+      "--output",
+      "drafts",
+      "--title",
+      "My Title",
+      "--description",
+      "Desc",
+      "--topic",
+      "docs",
+      "--json",
+    ]);
+    expect(ingestParsed.flags).toMatchObject({
+      output: "drafts",
+      title: "My Title",
+      description: "Desc",
+      topic: ["docs"],
+      json: true,
+    });
+    expect(() =>
+      validateCommandFlags("ingest", ingestParsed.flags),
+    ).not.toThrow();
   });
   it("supports --quiet and repeated --fields for list", () => {
     expect(parseFlags(["list", "--quiet", "--json"]).flags.quiet).toBe(true);

@@ -7,7 +7,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { basename, join, relative, resolve, sep } from "node:path";
-import { LIMITS } from "./limits.js";
+import { LIMITS, type BundleLimits } from "./limits.js";
 import { readConfig, type OkfConfig } from "./config.js";
 import { parse as parseYaml } from "yaml";
 
@@ -87,7 +87,7 @@ function isPlaceholderSecret(value: string): boolean {
   );
 }
 
-function hasRealSecret(content: string): boolean {
+export function hasRealSecret(content: string): boolean {
   if (/-----BEGIN .*PRIVATE KEY-----/i.test(content)) return true;
   if (/Bearer\s+[A-Za-z0-9._~+/=-]{20,}/i.test(content)) return true;
   if (
@@ -116,6 +116,7 @@ async function walk(
   current: string,
   config: OkfConfig,
   output: BundleFile[],
+  limits: BundleLimits,
 ): Promise<void> {
   const entries = await readdir(current, { withFileTypes: true });
   entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
@@ -128,7 +129,7 @@ async function walk(
     if (path === ".github/skills" || path.startsWith(".github/skills/"))
       continue;
     if (entry.isDirectory()) {
-      await walk(root, absolute, config, output);
+      await walk(root, absolute, config, output, limits);
       continue;
     }
     if (
@@ -149,16 +150,16 @@ async function walk(
     )
       throw new Error(`Unsafe Markdown path: ${path}`);
     const bytes = (await stat(absolute)).size;
-    if (bytes > LIMITS.maxFileBytes)
+    if (bytes > limits.maxFileBytes)
       throw new Error(
-        `${path} exceeds the ${LIMITS.maxFileBytes} byte file limit`,
+        `${path} exceeds the ${limits.maxFileBytes} byte file limit`,
       );
     const content = await readFile(absolute, "utf8");
     if (hasRealSecret(content))
       throw new Error(`Possible secret detected in: ${path}`);
     output.push({ path, content, bytes });
-    if (output.length > LIMITS.maxFiles)
-      throw new Error(`Bundle exceeds the ${LIMITS.maxFiles} file limit`);
+    if (output.length > limits.maxFiles)
+      throw new Error(`Bundle exceeds the ${limits.maxFiles} file limit`);
   }
 }
 
@@ -272,16 +273,19 @@ function validateMarkdown(files: BundleFile[], root: string): string[] {
   return errors;
 }
 
-export function validateBundle(bundle: Bundle): string[] {
+export function validateBundle(
+  bundle: Bundle,
+  limits: BundleLimits = LIMITS,
+): string[] {
   const errors = bundle.files.flatMap((file) =>
-    file.bytes > LIMITS.maxFileBytes
-      ? [`${file.path} exceeds the ${LIMITS.maxFileBytes} byte file limit`]
+    file.bytes > limits.maxFileBytes
+      ? [`${file.path} exceeds the ${limits.maxFileBytes} byte file limit`]
       : [],
   );
-  if (bundle.files.length > LIMITS.maxFiles)
-    errors.push(`Bundle exceeds the ${LIMITS.maxFiles} file limit`);
-  if (bundle.totalBytes > LIMITS.maxBundleBytes)
-    errors.push(`Bundle exceeds the ${LIMITS.maxBundleBytes} byte limit`);
+  if (bundle.files.length > limits.maxFiles)
+    errors.push(`Bundle exceeds the ${limits.maxFiles} file limit`);
+  if (bundle.totalBytes > limits.maxBundleBytes)
+    errors.push(`Bundle exceeds the ${limits.maxBundleBytes} byte limit`);
   if (!bundle.root)
     errors.push("A bundle-root README.md or index.md is required");
   else errors.push(...validateMarkdown(bundle.files, bundle.root));
@@ -308,13 +312,17 @@ export function validateBundle(bundle: Bundle): string[] {
   return errors;
 }
 
-export async function collectBundle(directory: string): Promise<Bundle> {
-  return collectBundleWithOverrides(directory);
+export async function collectBundle(
+  directory: string,
+  limits: BundleLimits = LIMITS,
+): Promise<Bundle> {
+  return collectBundleWithOverrides(directory, {}, limits);
 }
 
 export async function collectBundleWithOverrides(
   directory: string,
   overrides: BundleOverrides = {},
+  limits: BundleLimits = LIMITS,
 ): Promise<Bundle> {
   const base = resolve(directory);
   const baseStat = await lstat(base);
@@ -352,11 +360,11 @@ export async function collectBundleWithOverrides(
       );
   }
   const files: BundleFile[] = [];
-  await walk(base, base, config, files);
+  await walk(base, base, config, files, limits);
   if (!files.length) throw new Error("No Markdown files found");
   const totalBytes = files.reduce((sum, file) => sum + file.bytes, 0);
-  if (totalBytes > LIMITS.maxBundleBytes)
-    throw new Error(`Bundle exceeds the ${LIMITS.maxBundleBytes} byte limit`);
+  if (totalBytes > limits.maxBundleBytes)
+    throw new Error(`Bundle exceeds the ${limits.maxBundleBytes} byte limit`);
   const root = effectiveRoot
     ? files.find((file) => file.path === effectiveRoot)?.path
     : files.find(

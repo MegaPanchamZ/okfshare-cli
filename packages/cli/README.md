@@ -42,6 +42,33 @@ build, and cache directories. Markdown paths must be safe. An optional
 Without a configured title, the title is inferred from root frontmatter, its first
 heading, or its filename.
 
+## Ingestion (Repository to first citation)
+
+Turn an existing codebase or documentation tree into a local OKF bundle draft in a single command:
+
+```sh
+npx okfshare@latest ingest . ./knowledge --title "Project Knowledge"
+npx okfshare@latest ingest . --dry-run
+```
+
+`ingest` discovers:
+
+- `README.md` and module READMEs
+- Agent rules (`.cursorrules`, `CLAUDE.md`, `.github/copilot-instructions.md`, `AGENTS.md`, `.windsurfrules`, etc.)
+- ADRs (`docs/adr/*.md`, `decisions/*.md`, etc.)
+- Documentation (`docs/**/*.md`, `ARCHITECTURE.md`, `SECURITY.md`, etc.)
+
+It generates a compliant `index.md`, `okfshare.json`, and concept markdown files with valid OKF v0.2 `type:` frontmatter, validates the resulting draft, and guides you to publish and retrieve citations:
+
+```sh
+# 1. Publish the validated draft
+npx okfshare@latest publish ./knowledge --yes
+
+# 2. Bind and retrieve cited context
+npx okfshare@latest bind <SHARE_ID> ./knowledge
+npx okfshare@latest context <SHARE_ID> "How does authentication work?"
+```
+
 ## Validation and publishing
 
 ```sh

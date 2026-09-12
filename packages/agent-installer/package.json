@@ -1,6 +1,6 @@
 {
   "name": "@okfshare/agent-installer",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Install the canonical OKFShare agent skill into supported agent directories",
   "repository": {
     "type": "git",

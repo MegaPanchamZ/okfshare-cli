@@ -107,12 +107,19 @@ operation.
 
 ## Validate, publish, and update
 
-To create a new bundle, scaffold it with `init` into a fresh directory (never an
+To create a new bundle from scratch, scaffold it with `init` into a fresh directory (never an
 existing one), then edit the generated files:
 
 ```sh
 npx okfshare@latest init /tmp/createabundle-UNIQUE --title "Bundle title"
 npx okfshare@latest validate /tmp/createabundle-UNIQUE --json
+```
+
+To ingest an existing repository (discovering README, agent rules, docs, and ADRs) into a validated OKF draft:
+
+```sh
+npx okfshare@latest ingest /path/to/repo /tmp/okfshare-draft-UNIQUE --title "Repository Knowledge" --json
+npx okfshare@latest validate /tmp/okfshare-draft-UNIQUE --json
 ```
 
 `init` writes `index.md` (with `okf_version: "0.2"`), a first concept file with

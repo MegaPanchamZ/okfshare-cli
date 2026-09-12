@@ -111,6 +111,50 @@ describe("human rendering", () => {
     expect(text).toContain("bind sh_9 ./k");
   });
 
+  it("renders ingest with discovered files and follow-up guidance", () => {
+    const text = renderHuman(
+      resultEnvelope("ingest", {
+        bundle: {
+          path: "./knowledge",
+          files: 4,
+          bytes: 2048,
+          digest: "sha256-1234567890ab",
+        },
+        discovered: [
+          {
+            category: "readme",
+            source: "README.md",
+            target: "readme.md",
+            title: "Project Readme",
+          },
+          {
+            category: "agent-rules",
+            source: ".cursorrules",
+            target: "rules/cursorrules.md",
+            title: "Cursor Rules",
+          },
+        ],
+      }),
+    );
+    expect(text).toContain("Ingested repository into ./knowledge");
+    expect(text).toContain("[readme] README.md → readme.md");
+    expect(text).toContain("[agent-rules] .cursorrules → rules/cursorrules.md");
+    expect(text).toContain("Draft bundle valid");
+    expect(text).toContain("publish ./knowledge --yes");
+    expect(text).toContain("context <SHARE_ID>");
+  });
+
+  it("shell-quotes ingest paths in copyable commands", () => {
+    const text = renderHuman(
+      resultEnvelope("ingest", {
+        bundle: { path: "./drafts/my knowledge;v1", files: 2, bytes: 10 },
+        discovered: [],
+      }),
+    );
+    expect(text).toContain("publish './drafts/my knowledge;v1' --yes");
+    expect(text).toContain("bind <SHARE_ID> './drafts/my knowledge;v1'");
+  });
+
   it("returns null for unknown shapes so out() can fall back to compact JSON", () => {
     expect(renderHuman({ custom: { nested: [1, 2] } })).toBeNull();
   });

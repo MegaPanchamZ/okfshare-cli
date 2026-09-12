@@ -35,6 +35,13 @@ const shortDigest = (digest: unknown): string => {
   return text.length > 12 ? text.slice(0, 12) : text;
 };
 
+const shellPath = (value: unknown): string => {
+  const path = str(value);
+  return /^[A-Za-z0-9_./~-]+$/.test(path)
+    ? path
+    : `'${path.replaceAll("'", "'\\''")}'`;
+};
+
 const shareUrl = (slugOrId: unknown): string =>
   `https://okfshare.app/s/${str(slugOrId)}`;
 
@@ -126,6 +133,40 @@ export function renderHuman(value: unknown): string | null {
     if (operation === "validate") {
       const bundle = (row.bundle ?? {}) as Row;
       return `✓ Bundle valid — ${str(bundle.files)} file${bundle.files === 1 ? "" : "s"}, ${bytes(bundle.bytes)}, digest ${shortDigest(bundle.digest)}\nnext: npx okfshare@latest publish ${str(bundle.path) || "."} --yes`;
+    }
+    if (operation === "ingest") {
+      const bundle = (row.bundle ?? {}) as Row;
+      const discovered = Array.isArray(row.discovered)
+        ? (row.discovered as Row[])
+        : [];
+      const lines = [
+        `${row.dryRun === true ? "✓ Ingest preview" : "✓ Ingested repository"} ${row.dryRun === true ? "for" : "into"} ${shellPath(bundle.path || "./knowledge")} — ${str(bundle.files)} files, ${bytes(bundle.bytes)}, digest ${shortDigest(bundle.digest)}`,
+      ];
+      if (discovered.length) {
+        for (const item of discovered) {
+          lines.push(
+            `  • [${str(item.category)}] ${str(item.sourcePath ?? item.source)} → ${str(item.targetPath ?? item.target)} (${str(item.title)})`,
+          );
+        }
+      }
+      const warnings = Array.isArray(row.warnings)
+        ? (row.warnings as unknown[]).map(str)
+        : [];
+      for (const warning of warnings) lines.push(`⚠ ${warning}`);
+      lines.push("");
+      lines.push("✓ Draft bundle valid — OKF v0.2 structure generated.");
+      lines.push("");
+      lines.push("next steps:");
+      lines.push(
+        `  1. Publish: npx okfshare@latest publish ${shellPath(bundle.path || "./knowledge")} --yes`,
+      );
+      lines.push(
+        `  2. Bind project: npx okfshare@latest bind <SHARE_ID> ${shellPath(bundle.path || "./knowledge")}`,
+      );
+      lines.push(
+        `  3. Retrieve context: npx okfshare@latest context <SHARE_ID> "how does this work?"`,
+      );
+      return lines.join("\n");
     }
     if (
       operation === "publish" ||
