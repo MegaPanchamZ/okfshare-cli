@@ -1,6 +1,6 @@
 {
   "name": "okfshare",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Command-line client for publishing and retrieving Open Knowledge Format bundles",
   "repository": {
     "type": "git",

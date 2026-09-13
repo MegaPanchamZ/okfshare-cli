@@ -31,7 +31,7 @@ import {
 } from "./bindings.js";
 import { detectTargets } from "@okfshare/agent-installer";
 
-export const CLI_VERSION = "0.5.2";
+export const CLI_VERSION = "0.6.0";
 export const RESULT_SCHEMA_VERSION = 1;
 export const CANONICAL_API_ORIGIN = "https://okfshare.app";
 type CommandSpec = {
@@ -440,6 +440,7 @@ export function parseFlags(args: string[]): {
         "agent",
         "password-stdin",
         "full",
+        "condense",
       ]);
       if (
         booleanFlags.has(key) &&
@@ -666,7 +667,7 @@ const commandFlags: Record<string, Set<string>> = {
     "file",
   ]),
   init: new Set(["title", "description"]),
-  ingest: new Set(["output", "title", "description", "topic"]),
+  ingest: new Set(["output", "title", "description", "topic", "condense"]),
   rollback: new Set(["expected-revision"]),
   fork: new Set([]),
   proposals: new Set([
@@ -833,7 +834,7 @@ export const commandHelp: Record<string, string> = {
   push: "npx okfshare@latest push [SHARE_ID] [DIR] [--expected-revision REVISION] [--yes|--dry-run] [--json]  (alias of update)",
   init: "npx okfshare@latest init [DIR] [--title TEXT] [--description TEXT]",
   ingest:
-    "npx okfshare@latest ingest [REPO_DIR] [OUTPUT_DIR] [--output DIR] [--title TEXT] [--description TEXT] [--topic TOPIC]... [--yes|--dry-run] [--json]",
+    "npx okfshare@latest ingest [REPO_DIR|GIT_URL] [OUTPUT_DIR] [--output DIR] [--condense] [--title TEXT] [--description TEXT] [--topic TOPIC]... [--yes|--dry-run] [--json]",
   log: "npx okfshare@latest log SHARE_ID [--api-url URL] [--json]",
   schema: "npx okfshare@latest schema [--command NAME] [--json]",
   completions: "npx okfshare@latest completions bash|zsh|fish",
@@ -2118,6 +2119,7 @@ async function main(argv: string[]) {
       topics,
       dryRun: flags.dryRun === true,
       yes: flags.yes === true,
+      condense: flags.condense === true,
       limits: await serverLimits(),
     });
     out(

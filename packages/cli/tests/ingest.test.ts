@@ -419,3 +419,59 @@ describe("okfshare ingest", () => {
     ).toBeGreaterThan(0);
   });
 });
+
+describe("okfshare condensation", () => {
+  it("detects git URLs", async () => {
+    const { isGitUrl } = await import("../src/ingest.js");
+    expect(isGitUrl("https://github.com/vercel/next.js")).toBe(true);
+    expect(isGitUrl("git@github.com:vercel/next.js.git")).toBe(true);
+    expect(isGitUrl("https://github.com/nodejs/node.git")).toBe(true);
+    expect(isGitUrl("./local/repo")).toBe(false);
+    expect(isGitUrl("/abs/path")).toBe(false);
+  });
+
+  it("scores canonical docs above changelogs and translations", async () => {
+    const { docValueScore } = await import("../src/ingest.js");
+    expect(docValueScore("docs/index.md")).toBeGreaterThan(
+      docValueScore("docs/getting-started.md"),
+    );
+    expect(docValueScore("docs/getting-started.md")).toBeGreaterThan(
+      docValueScore("docs/changelog.md"),
+    );
+    expect(docValueScore("docs/api/routing.md")).toBeGreaterThan(
+      docValueScore("docs/translations/fr/routing.md"),
+    );
+  });
+
+  it("condenses a large docs tree to high-value pages", async () => {
+    const repoDir = await mkdtemp(join(tmpdir(), "okf-condense-"));
+    await writeFile(join(repoDir, "README.md"), "# Project\n\nOverview.\n");
+    await mkdir(join(repoDir, "docs"), { recursive: true });
+    for (const [name, body] of [
+      ["a-changelog.md", "Release history and changes."],
+      ["b-license.md", "Licence text."],
+      ["c-getting-started.md", "Install and start quickly."],
+      ["d-api.md", "Core API reference."],
+    ] as const)
+      await writeFile(join(repoDir, "docs", name), `# ${name}\n\n${body}\n`);
+
+    const limits = { ...resolveLimits(null), maxFiles: 4 };
+    const condensed = await discoverAndDraft(
+      repoDir,
+      join(repoDir, "out-condensed"),
+      { condense: true, limits },
+    );
+    const paths = condensed.discovered.map((file) => file.sourcePath);
+    expect(paths).toContain("docs/c-getting-started.md");
+    expect(paths).toContain("docs/d-api.md");
+    expect(paths).not.toContain("docs/a-changelog.md");
+
+    const plain = await discoverAndDraft(repoDir, join(repoDir, "out-plain"), {
+      limits,
+    });
+    // Without condensing, alphabetical order wins and low-value docs are kept.
+    expect(plain.discovered.map((file) => file.sourcePath)).toContain(
+      "docs/a-changelog.md",
+    );
+  });
+});

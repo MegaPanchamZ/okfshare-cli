@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
 import {
   lstat,
   mkdir,
@@ -10,7 +11,9 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { promisify } from "node:util";
 import { parse as parseYaml } from "yaml";
 import { LIMITS, type BundleLimits } from "./limits.js";
 import {
@@ -40,6 +43,12 @@ export interface IngestOptions {
   topics?: string[];
   dryRun?: boolean;
   yes?: boolean;
+  /**
+   * Rank discovered files by documentation value before applying the file and
+   * byte caps, so a large docs tree is condensed to its high-signal pages
+   * instead of the alphabetically first ones.
+   */
+  condense?: boolean;
   /** Capacity selected for the authenticated workspace. */
   limits?: BundleLimits;
   /** @internal deterministic failure injection for CLI tests */
@@ -87,6 +96,74 @@ const ignoredDirNames = new Set([
   "evaluations",
   "scratch",
 ]);
+
+const execFileAsync = promisify(execFile);
+
+/** A repo argument is treated as a remote source when it looks like a git URL. */
+export const isGitUrl = (value: string): boolean =>
+  /^(https?:\/\/|git@|ssh:\/\/)/.test(value) || value.endsWith(".git");
+
+/**
+ * Shallow, blob-filtered, sparse clone limited to Markdown and conventional
+ * docs directories. Keeps large documentation repos (Next.js, Kubernetes, …)
+ * cheap to fetch for condensation.
+ */
+export async function cloneDocsRepo(url: string, dest: string): Promise<void> {
+  await execFileAsync(
+    "git",
+    [
+      "clone",
+      "--depth",
+      "1",
+      "--filter=blob:none",
+      "--sparse",
+      "--quiet",
+      url,
+      dest,
+    ],
+    { timeout: 300_000, maxBuffer: 16 * 1024 * 1024 },
+  );
+  await execFileAsync(
+    "git",
+    [
+      "-C",
+      dest,
+      "sparse-checkout",
+      "set",
+      "--no-cone",
+      "/*.md",
+      "/docs/**",
+      "/doc/**",
+      "/documentation/**",
+      "/guides/**",
+      "/guide/**",
+      "/content/**",
+      "/website/docs/**",
+      "/pages/**/*.md",
+    ],
+    { timeout: 120_000, maxBuffer: 8 * 1024 * 1024 },
+  );
+}
+
+// Path-based documentation value used to condense large docs trees. This is a
+// heuristic, not a quality judgement: it favours canonical entry points and
+// penalises changelogs, licences, translations, and examples.
+const HIGH_VALUE_DOC =
+  /(getting[_-]?started|quick[_-]?start|introduction|overview|concepts?|why-|architecture|routing|rendering|data[_-]?fetching|caching|api|configuration|config|install|deployment|deploy|security|authentication|authorization|testing|middleware|server|tutorial|guide)/i;
+const LOW_VALUE_DOC =
+  /(changelog|changes|release[-_]?notes?|license|licence|code[_-]?of[_-]?conduct|contributing|sponsor|support|roadmap|credits|authors|translat|i18n|\/blog\/|examples?|showcase|playground|migration|upgrade[-_]?guide)/i;
+
+export function docValueScore(sourcePath: string): number {
+  const lower = sourcePath.toLowerCase();
+  const base = basename(lower);
+  let score = 0;
+  if (/^index\.md$/.test(base)) score += 50;
+  if (HIGH_VALUE_DOC.test(lower)) score += 25;
+  if (LOW_VALUE_DOC.test(lower)) score -= 60;
+  score -= (lower.split("/").length - 1) * 2; // prefer shallow paths
+  score -= Math.min(25, Math.floor(base.length / 8)); // prefer concise names
+  return score;
+}
 
 function computeDigest(files: { path: string; content: string }[]): string {
   const sorted = [...files].sort((a, b) =>
@@ -209,9 +286,9 @@ function categorizePath(
     return { category: "docs", type: "doc", priority: 4 };
   }
 
-  // Any other Markdown file in repo
+  // Any other Markdown/MDX file in repo
   if (
-    lower.endsWith(".md") &&
+    MARKDOWN_SOURCE.test(lower) &&
     !lower.endsWith("index.md") &&
     !lower.endsWith("log.md")
   ) {
@@ -220,6 +297,12 @@ function categorizePath(
 
   return null;
 }
+
+// Source documentation can be .md, .mdx, or .markdown; targets are normalised
+// to .md because the OKF bundle format only accepts Markdown paths.
+const MARKDOWN_SOURCE = /\.(md|mdx|markdown)$/i;
+const stripMarkdownExt = (name: string) =>
+  name.replace(/\.(md|mdx|markdown)$/i, "");
 
 function isSafeSourcePath(path: string): boolean {
   const segments = path.split("/");
@@ -352,9 +435,14 @@ export async function discoverAndDraft(
   const warnings: string[] = [];
   await scanRepo(repoRoot, repoRoot, outAbsolute, rawList, warnings, limits);
 
-  // Sort by priority (README > Agent Rules > ADRs > Docs), then by source path
+  // Sort by priority (README > Agent Rules > ADRs > Docs). When condensing,
+  // rank by documentation value within each priority band, then by path.
   rawList.sort((a, b) => {
     if (a.priority !== b.priority) return a.priority - b.priority;
+    if (options.condense) {
+      const value = docValueScore(b.sourcePath) - docValueScore(a.sourcePath);
+      if (value !== 0) return value;
+    }
     return a.sourcePath < b.sourcePath
       ? -1
       : a.sourcePath > b.sourcePath
@@ -423,6 +511,18 @@ export async function discoverAndDraft(
       targetRel = `docs/${cleanBase || "doc.md"}`;
     }
 
+    // `index.md` and `log.md` are reserved by the OKF bundle format at every
+    // depth, and only the bundle-root index may carry frontmatter. Rename
+    // nested ones so their content is still ingested as ordinary concepts.
+    {
+      const targetDir = dirname(targetRel);
+      const lowerBase = basename(targetRel).toLowerCase();
+      if (targetDir !== "." && lowerBase === "index.md")
+        targetRel = join(targetDir, "overview.md");
+      else if (targetDir !== "." && lowerBase === "log.md")
+        targetRel = join(targetDir, "history.md");
+    }
+
     // Avoid collision
     if (
       usedTargetPaths.has(targetRel) ||
@@ -450,7 +550,10 @@ export async function discoverAndDraft(
     usedTargetPaths.add(targetRel);
 
     // Extract title & format frontmatter
-    let fileTitle = extractTitle(content, basename(raw.sourcePath, ".md"));
+    let fileTitle = extractTitle(
+      content,
+      stripMarkdownExt(basename(raw.sourcePath)),
+    );
     if (raw.category === "readme" && !inferredTitle) {
       inferredTitle = fileTitle;
     }
@@ -677,144 +780,162 @@ export async function ingestRepository(
   outputDir: string,
   options: IngestOptions = {},
 ): Promise<IngestResult> {
-  const repoResolved = resolve(repoDir);
-  const outResolved = resolve(outputDir);
-
-  // Ingestion is deliberately create-only. Apart from protecting user data,
-  // this also prevents an output directory that happens to be inside the
-  // repository from being mistaken for source material on a later run.
-  if (
-    outResolved === repoResolved ||
-    outResolved.startsWith(`${repoResolved}${sep}`)
-  ) {
-    // An output nested in the repository is useful, so only the repository
-    // itself is unsafe. Nested destinations are skipped by scanRepo.
-    if (outResolved === repoResolved)
-      throw new Error(
-        "Refusing to use the repository as the ingest destination",
-      );
+  let tempClone: string | null = null;
+  let sourceDir = repoDir;
+  if (isGitUrl(repoDir)) {
+    tempClone = await mkdtemp(join(tmpdir(), "okfshare-ingest-repo-"));
+    const cloneDir = join(tempClone, "repo");
+    await cloneDocsRepo(repoDir, cloneDir);
+    sourceDir = cloneDir;
   }
-  await assertNoSymlinkInPath(outResolved);
   try {
-    const destinationStat = await lstat(outResolved);
-    throw new Error(
-      destinationStat.isSymbolicLink()
-        ? `Refusing to use a symlink as ingest destination: ${outputDir}`
-        : `Refusing to overwrite existing ingest destination: ${outputDir}`,
-    );
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  }
+    const repoResolved = resolve(sourceDir);
+    const outResolved = resolve(outputDir);
 
-  const { discovered, files, warnings, title, description, topics } =
-    await discoverAndDraft(repoResolved, outResolved, options);
-
-  if (discovered.length === 0)
-    warnings.push("No relevant Markdown knowledge files were discovered");
-
-  const totalBytes = files.reduce((sum, f) => sum + f.bytes, 0);
-  const digest = computeDigest(files);
-
-  const bundleObj: Bundle = {
-    directory: outResolved,
-    title,
-    description,
-    topics,
-    visibility: "unlisted",
-    files,
-    totalBytes,
-    root: "index.md",
-    readme: "index.md",
-  };
-
-  const validationErrors = validateBundle(bundleObj, options.limits ?? LIMITS);
-  const isValid = validationErrors.length === 0;
-
-  if (!isValid && !options.dryRun) {
-    throw new Error(
-      `Generated OKF draft failed validation: ${validationErrors.join("; ")}`,
-    );
-  }
-
-  if (!options.dryRun) {
-    await mkdir(dirname(outResolved), { recursive: true });
-    const stagingDir = await mkdtemp(
-      join(dirname(outResolved), ".okfshare-ingest-"),
-    );
-    let destinationCreated = false;
-    let committed = false;
-    try {
-      for (const file of files) {
-        const filePath = join(stagingDir, file.path);
-        await mkdir(dirname(filePath), { recursive: true });
-        await writeFile(filePath, file.content, "utf8");
-      }
-      const configPayload = { title, description, root: "index.md", topics };
-      await writeFile(
-        join(stagingDir, "okfshare.json"),
-        `${JSON.stringify(configPayload, null, 2)}\n`,
-        "utf8",
-      );
-      const collected = await collectBundleWithOverrides(stagingDir);
-      const collectedErrors = validateBundle(collected);
-      if (collectedErrors.length > 0)
+    // Ingestion is deliberately create-only. Apart from protecting user data,
+    // this also prevents an output directory that happens to be inside the
+    // repository from being mistaken for source material on a later run.
+    if (
+      outResolved === repoResolved ||
+      outResolved.startsWith(`${repoResolved}${sep}`)
+    ) {
+      // An output nested in the repository is useful, so only the repository
+      // itself is unsafe. Nested destinations are skipped by scanRepo.
+      if (outResolved === repoResolved)
         throw new Error(
-          `On-disk OKF draft failed validation: ${collectedErrors.join("; ")}`,
+          "Refusing to use the repository as the ingest destination",
         );
-      // Reserve the final path with mkdir (which never replaces an existing
-      // directory), then move only staged files into our owned directory.
-      // This makes cleanup safe even if a file move fails.
-      try {
-        await mkdir(outResolved);
-        destinationCreated = true;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "EEXIST")
-          throw new Error(
-            `Refusing to overwrite existing ingest destination: ${outputDir}`,
-          );
-        throw error;
-      }
-      const move = options.fileOps?.rename ?? rename;
-      for (const file of [...files.map((file) => file.path), "okfshare.json"]) {
-        const destinationFile = join(outResolved, file);
-        await mkdir(dirname(destinationFile), { recursive: true });
-        await move(join(stagingDir, file), destinationFile);
-      }
-      committed = true;
-    } finally {
-      if (!committed && destinationCreated)
-        await rm(outResolved, { recursive: true, force: true });
-      // This path is always ours; never clean an existing user destination.
-      await rm(stagingDir, { recursive: true, force: true });
     }
+    await assertNoSymlinkInPath(outResolved);
+    try {
+      const destinationStat = await lstat(outResolved);
+      throw new Error(
+        destinationStat.isSymbolicLink()
+          ? `Refusing to use a symlink as ingest destination: ${outputDir}`
+          : `Refusing to overwrite existing ingest destination: ${outputDir}`,
+      );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+
+    const { discovered, files, warnings, title, description, topics } =
+      await discoverAndDraft(repoResolved, outResolved, options);
+
+    if (discovered.length === 0)
+      warnings.push("No relevant Markdown knowledge files were discovered");
+
+    const totalBytes = files.reduce((sum, f) => sum + f.bytes, 0);
+    const digest = computeDigest(files);
+
+    const bundleObj: Bundle = {
+      directory: outResolved,
+      title,
+      description,
+      topics,
+      visibility: "unlisted",
+      files,
+      totalBytes,
+      root: "index.md",
+      readme: "index.md",
+    };
+
+    const validationErrors = validateBundle(
+      bundleObj,
+      options.limits ?? LIMITS,
+    );
+    const isValid = validationErrors.length === 0;
+
+    if (!isValid && !options.dryRun) {
+      throw new Error(
+        `Generated OKF draft failed validation: ${validationErrors.join("; ")}`,
+      );
+    }
+
+    if (!options.dryRun) {
+      await mkdir(dirname(outResolved), { recursive: true });
+      const stagingDir = await mkdtemp(
+        join(dirname(outResolved), ".okfshare-ingest-"),
+      );
+      let destinationCreated = false;
+      let committed = false;
+      try {
+        for (const file of files) {
+          const filePath = join(stagingDir, file.path);
+          await mkdir(dirname(filePath), { recursive: true });
+          await writeFile(filePath, file.content, "utf8");
+        }
+        const configPayload = { title, description, root: "index.md", topics };
+        await writeFile(
+          join(stagingDir, "okfshare.json"),
+          `${JSON.stringify(configPayload, null, 2)}\n`,
+          "utf8",
+        );
+        const collected = await collectBundleWithOverrides(stagingDir);
+        const collectedErrors = validateBundle(collected);
+        if (collectedErrors.length > 0)
+          throw new Error(
+            `On-disk OKF draft failed validation: ${collectedErrors.join("; ")}`,
+          );
+        // Reserve the final path with mkdir (which never replaces an existing
+        // directory), then move only staged files into our owned directory.
+        // This makes cleanup safe even if a file move fails.
+        try {
+          await mkdir(outResolved);
+          destinationCreated = true;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "EEXIST")
+            throw new Error(
+              `Refusing to overwrite existing ingest destination: ${outputDir}`,
+            );
+          throw error;
+        }
+        const move = options.fileOps?.rename ?? rename;
+        for (const file of [
+          ...files.map((file) => file.path),
+          "okfshare.json",
+        ]) {
+          const destinationFile = join(outResolved, file);
+          await mkdir(dirname(destinationFile), { recursive: true });
+          await move(join(stagingDir, file), destinationFile);
+        }
+        committed = true;
+      } finally {
+        if (!committed && destinationCreated)
+          await rm(outResolved, { recursive: true, force: true });
+        // This path is always ours; never clean an existing user destination.
+        await rm(stagingDir, { recursive: true, force: true });
+      }
+    }
+
+    const next = [
+      `npx okfshare@latest publish ${outputDir} --yes`,
+      `npx okfshare@latest bind <SHARE_ID> ${outputDir}`,
+      `npx okfshare@latest context <SHARE_ID> "How does this project work?"`,
+      `npx okfshare@latest search <SHARE_ID> "architecture"`,
+    ];
+
+    return {
+      operation: "ingest",
+      ok: isValid,
+      dryRun: options.dryRun,
+      repoPath: repoDir,
+      outputPath: outputDir,
+      discovered,
+      bundle: {
+        path: outputDir,
+        files: files.length,
+        bytes: totalBytes,
+        digest,
+      },
+      validation: {
+        valid: isValid,
+        errors: validationErrors,
+        warnings: [],
+      },
+      warnings,
+      next,
+    };
+  } finally {
+    if (tempClone) await rm(tempClone, { recursive: true, force: true });
   }
-
-  const next = [
-    `npx okfshare@latest publish ${outputDir} --yes`,
-    `npx okfshare@latest bind <SHARE_ID> ${outputDir}`,
-    `npx okfshare@latest context <SHARE_ID> "How does this project work?"`,
-    `npx okfshare@latest search <SHARE_ID> "architecture"`,
-  ];
-
-  return {
-    operation: "ingest",
-    ok: isValid,
-    dryRun: options.dryRun,
-    repoPath: repoDir,
-    outputPath: outputDir,
-    discovered,
-    bundle: {
-      path: outputDir,
-      files: files.length,
-      bytes: totalBytes,
-      digest,
-    },
-    validation: {
-      valid: isValid,
-      errors: validationErrors,
-      warnings: [],
-    },
-    warnings,
-    next,
-  };
 }
