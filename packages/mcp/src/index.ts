@@ -2,10 +2,18 @@
 import { spawn } from "node:child_process";
 import { stdin, stdout } from "node:process";
 
+type ToolAnnotations = {
+  readOnlyHint: boolean;
+  destructiveHint: boolean;
+  idempotentHint: boolean;
+  openWorldHint: boolean;
+};
+
 type Tool = {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  annotations: ToolAnnotations;
   args: (args: Record<string, unknown>) => string[];
   allowed?: string;
   oneTimeCredential?: boolean;
@@ -580,9 +588,37 @@ const organizationAdministrators = (args: Record<string, unknown>) => [
   "--json",
 ];
 
+const READ_ONLY_ANNOTATIONS: ToolAnnotations = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: true,
+};
+const LOCAL_READ_ONLY_ANNOTATIONS: ToolAnnotations = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+};
+// Grouped tools describe their most impactful operation, including mutations.
+// Repeated creates and lifecycle operations are not guaranteed idempotent.
+const MUTATING_ANNOTATIONS: ToolAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  idempotentHint: false,
+  openWorldHint: true,
+};
+const ADDITIVE_ANNOTATIONS: ToolAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: false,
+  openWorldHint: true,
+};
+
 export const TOOL_LIST: Tool[] = [
   {
     name: "okfshare_list",
+    annotations: READ_ONLY_ANNOTATIONS,
     description: "List shares in the authenticated workspace",
     inputSchema: {
       type: "object",
@@ -594,6 +630,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_search",
+    annotations: READ_ONLY_ANNOTATIONS,
     description:
       "Search a share's revision and return cited snippets (use citations to answer questions)",
     inputSchema: {
@@ -611,6 +648,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_context",
+    annotations: READ_ONLY_ANNOTATIONS,
     description:
       "Return cited context for a question from one share's revision",
     inputSchema: {
@@ -627,6 +665,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_open",
+    annotations: READ_ONLY_ANNOTATIONS,
     description: "Inspect one share's metadata",
     inputSchema: {
       type: "object",
@@ -637,6 +676,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_diff",
+    annotations: READ_ONLY_ANNOTATIONS,
     description: "Compare two revisions of a share",
     inputSchema: {
       type: "object",
@@ -651,6 +691,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_log",
+    annotations: READ_ONLY_ANNOTATIONS,
     description: "List immutable revisions with sizes and digests",
     inputSchema: {
       type: "object",
@@ -661,6 +702,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_validate",
+    annotations: READ_ONLY_ANNOTATIONS,
     description: "Validate a local directory as an OKF bundle",
     inputSchema: {
       type: "object",
@@ -671,12 +713,14 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_whoami",
+    annotations: READ_ONLY_ANNOTATIONS,
     description: "Check the authenticated workspace",
     inputSchema: { type: "object", properties: {} },
     args: whoami,
   },
   {
     name: "okfshare_capabilities",
+    annotations: READ_ONLY_ANNOTATIONS,
     description: "Inspect effective workspace or share capabilities",
     inputSchema: objectSchema(
       {
@@ -689,6 +733,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_organization_administrators",
+    annotations: MUTATING_ANNOTATIONS,
     description:
       "Inspect or assign organization billing and security administrators",
     inputSchema: objectSchema(
@@ -708,6 +753,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_fork",
+    annotations: MUTATING_ANNOTATIONS,
     description:
       "Create a fork of a share (the resulting share preserves lineage)",
     inputSchema: objectSchema(
@@ -722,6 +768,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_status",
+    annotations: LOCAL_READ_ONLY_ANNOTATIONS,
     description: "Inspect local bindings and whether a local bundle is stale",
     inputSchema: objectSchema({
       directory: stringProperty("optional local directory"),
@@ -730,6 +777,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_pull",
+    annotations: MUTATING_ANNOTATIONS,
     description: "Materialize a share revision into a local directory",
     inputSchema: objectSchema(
       {
@@ -744,6 +792,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_integrity",
+    annotations: READ_ONLY_ANNOTATIONS,
     description:
       "Verify one revision or a bounded, cursor-paginated revision history",
     inputSchema: objectSchema(
@@ -760,6 +809,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_share_access",
+    annotations: MUTATING_ANNOTATIONS,
     description:
       "List or manage direct share roles and grants, or make a share private",
     inputSchema: objectSchema(
@@ -779,6 +829,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_rulesets",
+    annotations: MUTATING_ANNOTATIONS,
     description:
       "List, inspect, create, update, delete, validate, or evaluate workspace rulesets",
     inputSchema: objectSchema(
@@ -803,6 +854,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_webhooks",
+    annotations: MUTATING_ANNOTATIONS,
     description: "List, inspect, create, update, or delete product webhooks",
     inputSchema: objectSchema(
       {
@@ -817,6 +869,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_domains",
+    annotations: MUTATING_ANNOTATIONS,
     description: "Manage organization domains and perform manual verification",
     inputSchema: objectSchema(
       {
@@ -834,6 +887,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_admin",
+    annotations: MUTATING_ANNOTATIONS,
     description:
       "Inspect administrator access and manage operator workspace settings and policies",
     inputSchema: objectSchema(
@@ -856,6 +910,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_billing",
+    annotations: READ_ONLY_ANNOTATIONS,
     description:
       "Inspect the authenticated account billing and entitlement snapshot",
     inputSchema: objectSchema({}),
@@ -863,6 +918,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_graph",
+    annotations: READ_ONLY_ANNOTATIONS,
     description:
       "Search or inspect the knowledge graph (snapshot, neighbors, path, diff, provenance, related)",
     inputSchema: objectSchema(
@@ -896,6 +952,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_blame",
+    annotations: READ_ONLY_ANNOTATIONS,
     description: "Explain line or semantic ownership of a share",
     inputSchema: objectSchema(
       {
@@ -910,6 +967,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_attestations",
+    annotations: ADDITIVE_ANNOTATIONS,
     description:
       "List, verify, or submit revision attestations; private keys are never accepted",
     inputSchema: objectSchema(
@@ -929,6 +987,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_refs",
+    annotations: MUTATING_ANNOTATIONS,
     description:
       "List, resolve, inspect, create, move, or delete branches, channels, tags, and releases",
     inputSchema: objectSchema(
@@ -959,6 +1018,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_proposals",
+    annotations: MUTATING_ANNOTATIONS,
     description:
       "Inspect and manage proposal reviews, comments, checks, and lifecycle",
     inputSchema: objectSchema(
@@ -988,6 +1048,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_roles",
+    annotations: MUTATING_ANNOTATIONS,
     description: "List, get, create, update, or delete workspace roles",
     inputSchema: objectSchema(
       {
@@ -1003,6 +1064,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_bindings",
+    annotations: MUTATING_ANNOTATIONS,
     description: "List or remove workspace role bindings",
     inputSchema: objectSchema(
       {
@@ -1021,6 +1083,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_organizations",
+    annotations: MUTATING_ANNOTATIONS,
     description:
       "List, inspect, create, update, delete, or transfer organization ownership",
     inputSchema: objectSchema(
@@ -1047,6 +1110,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_teams",
+    annotations: MUTATING_ANNOTATIONS,
     description: "List and manage organization teams and membership roles",
     inputSchema: objectSchema(
       {
@@ -1074,6 +1138,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_service_accounts",
+    annotations: MUTATING_ANNOTATIONS,
     description:
       "Manage service accounts and credentials. Credential tokens are returned once and never stored by this server",
     inputSchema: objectSchema(
@@ -1102,6 +1167,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_siem",
+    annotations: MUTATING_ANNOTATIONS,
     description: "List and manage workspace SIEM webhook destinations",
     inputSchema: objectSchema(
       {
@@ -1120,6 +1186,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_audit",
+    annotations: READ_ONLY_ANNOTATIONS,
     description: "Search audit events or export audit metadata as CSV/NDJSON",
     inputSchema: objectSchema(
       {
@@ -1142,6 +1209,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_governance",
+    annotations: MUTATING_ANNOTATIONS,
     description:
       "Inspect governance policies and legal holds, or run retention dry-runs",
     inputSchema: objectSchema(
@@ -1171,6 +1239,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_portability_export",
+    annotations: READ_ONLY_ANNOTATIONS,
     description: "Export workspace, share, or account portability metadata",
     inputSchema: objectSchema(
       {
@@ -1185,6 +1254,7 @@ export const TOOL_LIST: Tool[] = [
   },
   {
     name: "okfshare_ops",
+    annotations: READ_ONLY_ANNOTATIONS,
     description: "Read operations status, dependencies, or SLO information",
     inputSchema: objectSchema({
       action: actionProperty(["status", "dependencies", "slo"]),
@@ -1273,11 +1343,14 @@ const handle = async (rpc: Rpc): Promise<Rpc> => {
     return {
       ...rpc,
       result: {
-        tools: TOOL_LIST.map(({ name, description, inputSchema }) => ({
-          name,
-          description,
-          inputSchema,
-        })),
+        tools: TOOL_LIST.map(
+          ({ name, description, inputSchema, annotations }) => ({
+            name,
+            description,
+            inputSchema,
+            annotations,
+          }),
+        ),
       },
     };
   }

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import { TOOL_LIST, safeOutput } from "../src/index.js";
 
 const tool = (name: string) => {
@@ -9,6 +11,121 @@ const tool = (name: string) => {
 };
 
 describe("platform MCP contract", () => {
+  it("publishes all four boolean hints over stdio for every tool", () => {
+    const child = spawnSync(
+      process.execPath,
+      [fileURLToPath(new URL("../src/index.js", import.meta.url))],
+      {
+        input:
+          JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) +
+          "\n",
+        encoding: "utf8",
+        timeout: 10000,
+      },
+    );
+    assert.ifError(child.error);
+    assert.equal(child.status, 0, child.stderr);
+    const response = JSON.parse(child.stdout);
+    assert.equal(response.id, 1);
+    assert.equal(response.result.tools.length, TOOL_LIST.length);
+    for (const published of response.result.tools) {
+      assert.deepEqual(published.annotations, tool(published.name).annotations);
+      assert.deepEqual(Object.keys(published.annotations).sort(), [
+        "destructiveHint",
+        "idempotentHint",
+        "openWorldHint",
+        "readOnlyHint",
+      ]);
+      for (const value of Object.values(published.annotations))
+        assert.equal(typeof value, "boolean", published.name);
+      assert.equal("args" in published, false);
+      assert.equal("oneTimeCredential" in published, false);
+    }
+  });
+
+  it("classifies every tool by its most impactful supported operation", () => {
+    const groups = [
+      {
+        names: [
+          "okfshare_list",
+          "okfshare_search",
+          "okfshare_context",
+          "okfshare_open",
+          "okfshare_diff",
+          "okfshare_log",
+          "okfshare_validate",
+          "okfshare_whoami",
+          "okfshare_capabilities",
+          "okfshare_integrity",
+          "okfshare_billing",
+          "okfshare_graph",
+          "okfshare_blame",
+          "okfshare_audit",
+          "okfshare_portability_export",
+          "okfshare_ops",
+        ],
+        hints: {
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: true,
+        },
+      },
+      {
+        names: ["okfshare_status"],
+        hints: {
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        names: ["okfshare_attestations"],
+        hints: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: true,
+        },
+      },
+      {
+        names: [
+          "okfshare_organization_administrators",
+          "okfshare_fork",
+          "okfshare_pull",
+          "okfshare_share_access",
+          "okfshare_rulesets",
+          "okfshare_webhooks",
+          "okfshare_domains",
+          "okfshare_admin",
+          "okfshare_refs",
+          "okfshare_proposals",
+          "okfshare_roles",
+          "okfshare_bindings",
+          "okfshare_organizations",
+          "okfshare_teams",
+          "okfshare_service_accounts",
+          "okfshare_siem",
+          "okfshare_governance",
+        ],
+        hints: {
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: false,
+          openWorldHint: true,
+        },
+      },
+    ];
+    assert.deepEqual(
+      groups.flatMap((group) => group.names).sort(),
+      TOOL_LIST.map((item) => item.name).sort(),
+    );
+    for (const group of groups)
+      for (const name of group.names)
+        assert.deepEqual(tool(name).annotations, group.hints, name);
+  });
+
   it("publishes closed schemas and stable platform tools", () => {
     const assertClosed = (schema: unknown) => {
       if (!schema || typeof schema !== "object") return;
