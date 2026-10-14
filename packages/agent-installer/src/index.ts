@@ -141,7 +141,7 @@ const adapters: Array<{
     label: "Antigravity",
     user: ".gemini/antigravity/skills",
     project: ".gemini/antigravity/skills",
-    marker: ".gemini",
+    marker: ".gemini/antigravity",
   },
   {
     id: "universal",
